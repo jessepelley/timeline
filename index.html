@@ -49,33 +49,26 @@
         <div id="future-overlay"></div>
       </div>
       <div id="timeline-hint">Right-click on timeline to cut &nbsp;·&nbsp; C / Space shortcut</div>
-    </div>
 
-    <!-- ── Segment editor ── -->
-    <div id="editor-panel" class="hidden">
-      <div id="editor-header">
-        <span id="editor-seg-time"></span>
-        <div id="editor-actions">
-          <button id="merge-prev-btn" disabled>⟵ Merge prev</button>
-          <button id="merge-next-btn" disabled>Merge next ⟶</button>
-          <button id="editor-close">✕</button>
+      <!-- ── Segment editor (overlays timeline in-place) ── -->
+      <div id="editor-panel" class="hidden">
+        <div id="editor-header">
+          <span id="editor-seg-time"></span>
+          <div id="editor-actions">
+            <button id="merge-prev-btn" disabled>⟵ Merge prev</button>
+            <button id="merge-next-btn" disabled>Merge next ⟶</button>
+            <button id="editor-close">✕</button>
+          </div>
         </div>
-      </div>
-      <div id="editor-body">
-        <div id="label-section">
-          <label>Category</label>
+        <div id="editor-body">
           <div id="category-chips"></div>
-        </div>
-        <div id="split-section">
-          <label>Split</label>
           <div id="split-buttons">
-            <button id="split-halves-btn">½ Halves</button>
-            <button id="split-n-btn">÷ Into N</button>
+            <button id="split-halves-btn">½</button>
+            <button id="split-n-btn">÷N</button>
           </div>
         </div>
         <div id="notes-section">
-          <label>Notes</label>
-          <textarea id="notes-input" placeholder="Add a note for this segment…" rows="2"></textarea>
+          <input type="text" id="notes-input" placeholder="Note…" />
         </div>
       </div>
     </div>
@@ -115,16 +108,11 @@
 
     <!-- ── Context menu ── -->
     <div id="context-menu" class="hidden">
-      <div id="cm-cut"        class="cm-item cm-primary">✂&nbsp; Cut now</div>
+      <div id="cm-cut"    class="cm-item cm-primary">✂&nbsp; Cut now</div>
       <div class="cm-sep"></div>
-      <div id="cm-edit"       class="cm-item">Edit segment…</div>
-      <div id="cm-merge-prev" class="cm-item">⟵ Merge with previous</div>
-      <div id="cm-merge-next" class="cm-item">Merge with next ⟶</div>
+      <div id="cm-edit"   class="cm-item">Edit segment…</div>
       <div class="cm-sep"></div>
-      <div id="cm-split-half" class="cm-item">Split in half</div>
-      <div id="cm-split-n"    class="cm-item">Split into N…</div>
-      <div class="cm-sep"></div>
-      <div id="cm-adjust"     class="cm-item">Adjust shift times…</div>
+      <div id="cm-adjust" class="cm-item">Adjust shift times…</div>
     </div>
 
     <!-- ── Toast ── -->

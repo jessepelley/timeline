@@ -172,6 +172,7 @@ html, body {
   padding: 10px 14px 4px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  position: relative;
 }
 
 #time-ruler {
@@ -356,27 +357,28 @@ html, body {
 }
 .seg-tooltip.visible { opacity: 1; }
 
-/* ── Editor panel ──────────────────────────────────────────────────── */
+/* ── Editor panel (overlays timeline in-place) ─────────────────────── */
 #editor-panel {
+  position: absolute;
+  inset: 0;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  overflow: hidden;
-  transition: max-height .2s ease, opacity .15s;
-  max-height: 220px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  transition: opacity .15s;
   opacity: 1;
 }
 #editor-panel.hidden {
-  max-height: 0;
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
 }
 
 #editor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 14px 5px;
+  padding: 6px 14px 5px;
   border-bottom: 1px solid var(--border);
   gap: 8px;
 }
@@ -423,37 +425,24 @@ html, body {
 
 #editor-body {
   display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 8px 14px 10px;
-  align-items: flex-start;
-}
-
-#label-section, #split-section, #notes-section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-#label-section { flex: 2; min-width: 220px; }
-#split-section  { flex: 0 0 auto; }
-#notes-section  { flex: 1; min-width: 160px; }
-
-#editor-body label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .6px;
-  color: var(--text-muted);
+  gap: 8px;
+  padding: 6px 14px;
+  align-items: center;
+  flex: 1;
+  min-height: 0;
 }
 
 #category-chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
-  max-height: 80px;
-  overflow-y: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
 }
+#category-chips::-webkit-scrollbar { display: none; }
 
 .chip {
   padding: 3px 9px;
@@ -463,6 +452,8 @@ html, body {
   font-size: 12px;
   font-weight: 500;
   color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: transform .1s, box-shadow .1s;
   user-select: none;
 }
@@ -470,14 +461,14 @@ html, body {
 .chip:active { transform: scale(.95); }
 .chip.active { outline: 2px solid var(--text); outline-offset: 1px; }
 
-#split-buttons { display: flex; gap: 5px; }
+#split-buttons { display: flex; gap: 5px; flex-shrink: 0; }
 
 #split-halves-btn, #split-n-btn {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: var(--radius);
-  padding: 5px 11px;
+  padding: 4px 9px;
   font-size: 12px;
   cursor: pointer;
   font-family: inherit;
@@ -485,7 +476,10 @@ html, body {
 }
 #split-halves-btn:hover, #split-n-btn:hover { background: var(--border); }
 
+#notes-section { padding: 0 14px 6px; }
+
 #notes-input {
+  width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
@@ -493,9 +487,6 @@ html, body {
   padding: 5px 8px;
   font-size: 12px;
   font-family: inherit;
-  resize: vertical;
-  min-height: 48px;
-  max-height: 90px;
   transition: border-color .15s;
 }
 #notes-input:focus { border-color: var(--accent); outline: none; }

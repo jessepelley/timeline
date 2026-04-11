@@ -488,10 +488,6 @@ function showCtxMenu(e, segId) {
 
   document.getElementById('cm-cut').classList.toggle('disabled', !shiftActive);
   document.getElementById('cm-edit').classList.toggle('disabled', !has);
-  document.getElementById('cm-merge-prev').classList.toggle('disabled', !(has && idx > 0));
-  document.getElementById('cm-merge-next').classList.toggle('disabled', !(has && idx < state.segments.length - 1));
-  document.getElementById('cm-split-half').classList.toggle('disabled', !has);
-  document.getElementById('cm-split-n').classList.toggle('disabled', !has);
 
   $ctxMenu.classList.remove('hidden');
   const mw = 200, mh = 250;
@@ -615,16 +611,9 @@ $ctxMenu.addEventListener('click', e => {
   if (!item || item.classList.contains('disabled')) return;
   hideCtxMenu();
   switch (item.id) {
-    case 'cm-cut':        cut(); break;
-    case 'cm-edit':       if (contextTargetSegId) selectSeg(contextTargetSegId); break;
-    case 'cm-merge-prev':
-      if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithPrev(); } break;
-    case 'cm-merge-next':
-      if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithNext(); } break;
-    case 'cm-split-half': if (contextTargetSegId) splitInto(contextTargetSegId, 2); break;
-    case 'cm-split-n':
-      if (contextTargetSegId) showPrompt('Split into how many equal parts?', 3, n => splitInto(contextTargetSegId, n)); break;
-    case 'cm-adjust':     openShiftModal(); break;
+    case 'cm-cut':    cut(); break;
+    case 'cm-edit':   if (contextTargetSegId) selectSeg(contextTargetSegId); break;
+    case 'cm-adjust': openShiftModal(); break;
   }
 });
 

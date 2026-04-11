@@ -1,147 +1,200 @@
 'use strict';
 
 /* ── Constants ──────────────────────────────────────────────────────── */
-const SHIFT_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours
-const STORAGE_KEY = 'shift-timeline-v2';
-const CATEGORIES = ['Work', 'Meeting', 'Break', 'Interruption', 'Admin'];
-const TICK_INTERVAL_MS = 1000; // redraw every second
-const LARGE_UNALLOCATED_THRESHOLD_MS = 30 * 60 * 1000; // warn after 30 min unallocated
+const STORAGE_KEY_V3   = 'shift-timeline-v3';
+const STORAGE_KEY_V2   = 'shift-timeline-v2';
+const MIN_SEGMENT_MS   = 60_000;          // 1 min minimum
+const TICK_MS          = 1000;
+const WARN_THRESHOLD   = 30 * 60 * 1000; // 30 min unallocated
+
+const DEFAULT_LABELS = [
+  { name: 'Work',         type: 'work',     color: '#3b82f6' },
+  { name: 'Meeting',      type: 'work',     color: '#8b5cf6' },
+  { name: 'Admin',        type: 'work',     color: '#6366f1' },
+  { name: 'Break',        type: 'non-work', color: '#10b981' },
+  { name: 'Interruption', type: 'non-work', color: '#f97316' },
+];
+
+/* ── State ──────────────────────────────────────────────────────────── */
+let state = {
+  shiftStart: 0,
+  shiftEnd:   0,
+  segments:   [],   // { id, start, end|null, labelName, note }
+  labels:     [],   // { name, type, color }
+  settings:   { use24h: false },
+};
+
+let selectedSegId      = null;
+let contextTargetSegId = null;
+let tooltipEl          = null;
+let bannerEl           = null;
+let bannerSegId        = null;
+let lastWarnCheck      = 0;
 
 /* ── Utilities ──────────────────────────────────────────────────────── */
 function snap(ms) {
-  const halfHour = 30 * 60 * 1000;
-  return Math.round(ms / halfHour) * halfHour;
+  const half = 30 * 60 * 1000;
+  return Math.round(ms / half) * half;
 }
 
 function formatTime(ms) {
   const d = new Date(ms);
   const h = d.getHours();
   const m = String(d.getMinutes()).padStart(2, '0');
+  if (state.settings.use24h) return `${String(h).padStart(2,'0')}:${m}`;
   const suffix = h >= 12 ? 'pm' : 'am';
-  const h12 = ((h % 12) || 12);
-  return `${h12}:${m}${suffix}`;
+  return `${(h % 12) || 12}:${m}${suffix}`;
 }
 
 function formatDuration(ms) {
   if (ms < 0) ms = 0;
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function formatDurationShort(ms) {
+function formatShort(ms) {
   if (ms < 0) ms = 0;
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  if (h > 0) return `${h}:${String(m).padStart(2,'0')}`;
-  return `${m}:${String(totalSec % 60).padStart(2,'0')}`;
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}:${String(m).padStart(2,'0')}` : `${m}:${String(s % 60).padStart(2,'0')}`;
 }
 
-function catClass(label) {
-  if (!label || label === 'Unallocated') return 'seg-unallocated';
-  const known = ['work','meeting','break','interruption','admin'];
-  const low = label.toLowerCase();
-  if (known.includes(low)) return `seg-${low}`;
-  return 'seg-custom';
+function msToTimeInput(ms) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-function catColor(label) {
-  const map = {
-    'Unallocated': 'var(--col-unallocated)',
-    'Work':        'var(--col-work)',
-    'Meeting':     'var(--col-meeting)',
-    'Break':       'var(--col-break)',
-    'Interruption':'var(--col-interruption)',
-    'Admin':       'var(--col-admin)',
-  };
-  return map[label] || 'var(--col-custom)';
+function timeInputToMs(str, refMs) {
+  const [h, m] = str.split(':').map(Number);
+  const d = new Date(refMs);
+  d.setHours(h, m, 0, 0);
+  return d.getTime();
 }
 
-function generateId() {
-  return Math.random().toString(36).slice(2, 10);
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
+function getLabelObj(name) {
+  return state.labels.find(l => l.name === name) || null;
 }
 
-/* ── State ──────────────────────────────────────────────────────────── */
-let state = {
-  shiftStart: 0,
-  shiftEnd: 0,
-  segments: [], // { id, start, end|null, label }
-};
+function getLabelColor(name) {
+  const l = getLabelObj(name);
+  return l ? l.color : '#9ca3af';
+}
 
-let selectedSegId = null;
-let tooltipEl = null;
+function getLabelType(name) {
+  const l = getLabelObj(name);
+  return l ? l.type : 'unallocated';
+}
 
-/* ── Persistence ────────────────────────────────────────────────────── */
+function escapeCSV(v) {
+  const s = v === null || v === undefined ? '' : String(v);
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function shiftDurationMs() {
+  return state.shiftEnd - state.shiftStart;
+}
+
+/* ── Persistence & migration ────────────────────────────────────────── */
+function migrateState(p) {
+  if (!p.labels)   p.labels   = [...DEFAULT_LABELS];
+  if (!p.settings) p.settings = { use24h: false };
+  if (p.segments) {
+    p.segments.forEach(seg => {
+      if ('label' in seg && !('labelName' in seg)) { seg.labelName = seg.label || null; delete seg.label; }
+      if (!('labelName' in seg)) seg.labelName = null;
+      if (!('note' in seg)) seg.note = '';
+      // promote unknown label names into the labels list
+      if (seg.labelName && !p.labels.find(l => l.name === seg.labelName)) {
+        p.labels.push({ name: seg.labelName, type: 'work', color: '#6b7280' });
+      }
+    });
+  }
+  return p;
+}
+
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY_V3, JSON.stringify(state));
 }
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY_V3) || localStorage.getItem(STORAGE_KEY_V2);
     if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.shiftStart || !Array.isArray(parsed.segments)) return false;
-    state = parsed;
+    const p = JSON.parse(raw);
+    if (!p || !p.shiftStart || !Array.isArray(p.segments)) return false;
+    state = migrateState(p);
     return true;
   } catch { return false; }
 }
 
-/* ── Shift initialisation ───────────────────────────────────────────── */
-function initShift() {
-  const now = Date.now();
-  const snapped = snap(now);
-  state.shiftStart = snapped;
-  state.shiftEnd = snapped + SHIFT_DURATION_MS;
-  state.segments = [{ id: generateId(), start: snapped, end: null, label: null }];
+/* ── Shift init ─────────────────────────────────────────────────────── */
+function initShift(preserveMeta) {
+  const snapped = snap(Date.now());
+  const prev = preserveMeta ? { labels: state.labels, settings: state.settings } : null;
+  state = {
+    shiftStart: snapped,
+    shiftEnd:   snapped + 8 * 3600 * 1000,
+    segments:   [{ id: uid(), start: snapped, end: null, labelName: null, note: '' }],
+    labels:     prev ? prev.labels   : [...DEFAULT_LABELS],
+    settings:   prev ? prev.settings : { use24h: false },
+  };
   saveState();
 }
 
-function isShiftExpired() {
-  return Date.now() > state.shiftEnd + (60 * 60 * 1000); // 1hr grace
-}
+function isExpired() { return Date.now() > state.shiftEnd + 3600_000; }
 
-/* ── DOM references ─────────────────────────────────────────────────── */
-const $shiftTimeRange  = document.getElementById('shift-time-range');
-const $timeRuler       = document.getElementById('time-ruler');
-const $timelineTrack   = document.getElementById('timeline-track');
-const $segmentsContainer = document.getElementById('segments-container');
-const $playhead        = document.getElementById('playhead');
-const $futureOverlay   = document.getElementById('future-overlay');
-const $editorPanel     = document.getElementById('editor-panel');
-const $editorSegTime   = document.getElementById('editor-seg-time');
-const $editorClose     = document.getElementById('editor-close');
-const $categoryChips   = document.getElementById('category-chips');
-const $customLabelInput= document.getElementById('custom-label-input');
-const $customLabelBtn  = document.getElementById('custom-label-btn');
-const $splitHalvesBtn  = document.getElementById('split-halves-btn');
-const $splitNBtn       = document.getElementById('split-n-btn');
-const $cutBtn          = document.getElementById('cut-btn');
-const $resetBtn        = document.getElementById('reset-btn');
-const $themeBtn        = document.getElementById('theme-btn');
-const $toastContainer  = document.getElementById('toast-container');
-
-const $statAllocated    = document.getElementById('stat-allocated');
-const $statUnallocated  = document.getElementById('stat-unallocated');
-const $statSegments     = document.getElementById('stat-segments');
-const $statInterruptions= document.getElementById('stat-interruptions');
-const $statLongest      = document.getElementById('stat-longest');
-const $statAvg          = document.getElementById('stat-avg');
+/* ── DOM ────────────────────────────────────────────────────────────── */
+const $shiftRange   = document.getElementById('shift-time-range');
+const $ruler        = document.getElementById('time-ruler');
+const $track        = document.getElementById('timeline-track');
+const $segs         = document.getElementById('segments-container');
+const $playhead     = document.getElementById('playhead');
+const $future       = document.getElementById('future-overlay');
+const $editor       = document.getElementById('editor-panel');
+const $edTime       = document.getElementById('editor-seg-time');
+const $edClose      = document.getElementById('editor-close');
+const $chips        = document.getElementById('category-chips');
+const $splitHalf    = document.getElementById('split-halves-btn');
+const $splitN       = document.getElementById('split-n-btn');
+const $mergePrev    = document.getElementById('merge-prev-btn');
+const $mergeNext    = document.getElementById('merge-next-btn');
+const $notes        = document.getElementById('notes-input');
+const $resetBtn     = document.getElementById('reset-btn');
+const $themeBtn     = document.getElementById('theme-btn');
+const $fmtBtn       = document.getElementById('time-format-btn');
+const $labelsBtn    = document.getElementById('labels-btn');
+const $exportBtn    = document.getElementById('export-btn');
+const $exportMenu   = document.getElementById('export-menu');
+const $importFile   = document.getElementById('import-file');
+const $ctxMenu      = document.getElementById('context-menu');
+const $dropOverlay  = document.getElementById('drop-overlay');
+const $toasts       = document.getElementById('toast-container');
+const $legend       = document.getElementById('legend');
+const $statWork     = document.getElementById('stat-work');
+const $statNonwork  = document.getElementById('stat-nonwork');
+const $statUnalloc  = document.getElementById('stat-unallocated');
+const $statSegs     = document.getElementById('stat-segments');
+const $statIntr     = document.getElementById('stat-interruptions');
+const $statLongest  = document.getElementById('stat-longest');
+const $statAvg      = document.getElementById('stat-avg');
 
 /* ── Toast ──────────────────────────────────────────────────────────── */
 function toast(msg) {
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = msg;
-  $toastContainer.appendChild(el);
+  $toasts.appendChild(el);
   setTimeout(() => el.remove(), 3000);
 }
 
 /* ── Tooltip ────────────────────────────────────────────────────────── */
-function ensureTooltip() {
+function getTooltip() {
   if (!tooltipEl) {
     tooltipEl = document.createElement('div');
     tooltipEl.className = 'seg-tooltip';
@@ -149,469 +202,403 @@ function ensureTooltip() {
   }
   return tooltipEl;
 }
+function moveTooltip(e) {
+  const t = getTooltip();
+  t.style.left = (e.clientX + 14) + 'px';
+  t.style.top  = (e.clientY - 32) + 'px';
+}
 
-/* ── Cut action ─────────────────────────────────────────────────────── */
+/* ── Cut ────────────────────────────────────────────────────────────── */
 function cut() {
   const now = Date.now();
-  if (now >= state.shiftEnd) { toast('Shift has ended.'); return; }
-  if (now <= state.shiftStart) { toast('Shift has not started yet.'); return; }
-
-  const openSeg = state.segments.find(s => s.end === null);
-  if (!openSeg) return;
-
-  // don't cut within 3 seconds of last cut
-  const lastClosed = [...state.segments]
-    .filter(s => s.end !== null)
-    .sort((a,b) => b.end - a.end)[0];
-  if (lastClosed && now - lastClosed.end < 3000) {
-    toast('Too soon — wait a moment before cutting again.');
-    return;
-  }
-
-  openSeg.end = now;
-  state.segments.push({ id: generateId(), start: now, end: null, label: null });
+  if (now >= state.shiftEnd)   { toast('Shift has ended.'); return; }
+  if (now <  state.shiftStart) { toast('Shift has not started yet.'); return; }
+  const open = state.segments.find(s => s.end === null);
+  if (!open) return;
+  const lastEnd = Math.max(...state.segments.filter(s => s.end).map(s => s.end), 0);
+  if (lastEnd && now - lastEnd < 3000) { toast('Too soon — wait a moment.'); return; }
+  open.end = now;
+  state.segments.push({ id: uid(), start: now, end: null, labelName: null, note: '' });
   saveState();
   renderTimeline();
   renderStats();
-  checkUnallocatedWarning();
-  animateCut();
+  checkWarn();
 }
 
-function animateCut() {
-  $cutBtn.style.transform = 'scale(.92)';
-  setTimeout(() => { $cutBtn.style.transform = ''; }, 150);
-}
-
-/* ── Segment selection & editing ────────────────────────────────────── */
-function selectSegment(id) {
+/* ── Selection ──────────────────────────────────────────────────────── */
+function selectSeg(id) {
   selectedSegId = id;
-  renderTimeline(); // update selection highlight
+  renderTimeline();
   openEditor();
 }
 
-function deselectSegment() {
+function deselect() {
   selectedSegId = null;
   renderTimeline();
   closeEditor();
 }
 
+/* ── Editor ─────────────────────────────────────────────────────────── */
 function openEditor() {
   const seg = state.segments.find(s => s.id === selectedSegId);
   if (!seg) return;
-
   const now = Date.now();
-  const effectiveEnd = seg.end || Math.min(now, state.shiftEnd);
-  const dur = effectiveEnd - seg.start;
+  const end = seg.end || Math.min(now, state.shiftEnd);
+  $edTime.textContent = `${formatTime(seg.start)} – ${seg.end ? formatTime(seg.end) : 'now'} · ${formatDuration(end - seg.start)}`;
 
-  $editorSegTime.textContent =
-    `${formatTime(seg.start)} – ${seg.end ? formatTime(seg.end) : 'now'} · ${formatDuration(dur)}`;
-
-  // build chips
-  $categoryChips.innerHTML = '';
-  const allCats = ['Unallocated', ...CATEGORIES];
-  allCats.forEach(cat => {
-    const chip = document.createElement('span');
-    chip.className = 'chip' + ((!seg.label && cat === 'Unallocated') || seg.label === cat ? ' active' : '');
-    chip.dataset.cat = cat;
-    chip.textContent = cat;
-    chip.style.background = catColor(cat);
-    chip.addEventListener('click', () => {
-      applyLabel(cat === 'Unallocated' ? null : cat);
-    });
-    $categoryChips.appendChild(chip);
+  // chips
+  $chips.innerHTML = '';
+  [{ name: null, display: 'Unallocated', color: '#9ca3af' },
+   ...state.labels.map(l => ({ name: l.name, display: l.name, color: l.color }))
+  ].forEach(({ name, display, color }) => {
+    const c = document.createElement('span');
+    c.className = 'chip' + (seg.labelName === name ? ' active' : (!seg.labelName && name === null ? ' active' : ''));
+    c.textContent = display;
+    c.style.background = color;
+    c.addEventListener('click', () => applyLabel(name));
+    $chips.appendChild(c);
   });
 
-  // if custom label show it
-  if (seg.label && !CATEGORIES.includes(seg.label) && seg.label !== 'Unallocated') {
-    $customLabelInput.value = seg.label;
-  } else {
-    $customLabelInput.value = '';
-  }
+  $notes.value = seg.note || '';
 
-  $editorPanel.classList.remove('hidden');
+  const idx = state.segments.findIndex(s => s.id === selectedSegId);
+  $mergePrev.disabled = idx <= 0;
+  $mergeNext.disabled = idx >= state.segments.length - 1;
+
+  $editor.classList.remove('hidden');
 }
 
-function closeEditor() {
-  $editorPanel.classList.add('hidden');
-}
+function closeEditor() { $editor.classList.add('hidden'); }
 
-function applyLabel(label) {
+function applyLabel(name) {
   const seg = state.segments.find(s => s.id === selectedSegId);
   if (!seg) return;
-  seg.label = label;
+  seg.labelName = name;
   saveState();
   renderTimeline();
   renderStats();
-  openEditor(); // refresh chips
-  toast(label ? `Labeled: ${label}` : 'Marked as Unallocated');
-}
-
-/* ── Splitting ──────────────────────────────────────────────────────── */
-function splitSegmentInto(id, n) {
-  const idx = state.segments.findIndex(s => s.id === id);
-  if (idx === -1) return;
-  const seg = state.segments[idx];
-
-  const now = Date.now();
-  const effectiveEnd = seg.end || Math.min(now, state.shiftEnd);
-  if (effectiveEnd <= seg.start) return;
-  if (n < 2) return;
-
-  const dur = (effectiveEnd - seg.start) / n;
-  const newSegs = [];
-  for (let i = 0; i < n; i++) {
-    newSegs.push({
-      id: generateId(),
-      start: seg.start + i * dur,
-      end: seg.end !== null ? seg.start + (i + 1) * dur
-            : i < n - 1 ? seg.start + (i + 1) * dur : null,
-      label: null,
-    });
-  }
-
-  state.segments.splice(idx, 1, ...newSegs);
-  selectedSegId = newSegs[0].id;
-  saveState();
-  renderTimeline();
-  renderStats();
+  renderLegend();
   openEditor();
-  toast(`Split into ${n} segments`);
+  toast(name ? `Labeled: ${name}` : 'Marked as Unallocated');
 }
+
+/* notes auto-save */
+let noteSaveTimer = null;
+$notes.addEventListener('input', () => {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = setTimeout(() => {
+    const seg = state.segments.find(s => s.id === selectedSegId);
+    if (seg) { seg.note = $notes.value; saveState(); }
+  }, 400);
+});
 
 /* ── Stats ──────────────────────────────────────────────────────────── */
 function renderStats() {
   const now = Date.now();
-  const totalElapsed = Math.min(now, state.shiftEnd) - state.shiftStart;
-
-  let allocated = 0;
-  let unallocated = 0;
-  let interruptions = 0;
-  let longest = 0;
-  let count = 0;
+  let work = 0, nonwork = 0, unalloc = 0, interruptions = 0, longestWork = 0;
+  const elapsed = Math.min(now, state.shiftEnd) - state.shiftStart;
 
   state.segments.forEach(seg => {
-    const end = seg.end || Math.min(now, state.shiftEnd);
-    const dur = Math.max(0, end - seg.start);
-    count++;
-    if (!seg.label) {
-      unallocated += dur;
-    } else {
-      allocated += dur;
-      if (seg.label === 'Interruption') interruptions++;
-      if (dur > longest) longest = dur;
-    }
+    const e = seg.end || Math.min(now, state.shiftEnd);
+    const d = Math.max(0, e - seg.start);
+    const t = getLabelType(seg.labelName);
+    if (t === 'work')     { work    += d; if (d > longestWork) longestWork = d; }
+    else if (t === 'non-work') { nonwork += d; interruptions++; }
+    else                       { unalloc += d; }
   });
 
-  const avg = count > 0 ? totalElapsed / count : 0;
-
-  $statAllocated.textContent    = formatDurationShort(allocated);
-  $statUnallocated.textContent  = formatDurationShort(unallocated);
-  $statSegments.textContent     = count;
-  $statInterruptions.textContent= interruptions;
-  $statLongest.textContent      = longest > 0 ? formatDurationShort(longest) : '—';
-  $statAvg.textContent          = formatDurationShort(avg);
+  const count = state.segments.length;
+  $statWork.textContent     = formatShort(work);
+  $statNonwork.textContent  = formatShort(nonwork);
+  $statUnalloc.textContent  = formatShort(unalloc);
+  $statSegs.textContent     = count;
+  $statIntr.textContent     = interruptions;
+  $statLongest.textContent  = longestWork > 0 ? formatShort(longestWork) : '—';
+  $statAvg.textContent      = count > 0 ? formatShort(elapsed / count) : '—';
 }
 
-/* ── Unallocated warning ────────────────────────────────────────────── */
-let bannerEl = null;
+/* ── Legend ─────────────────────────────────────────────────────────── */
+function renderLegend() {
+  $legend.innerHTML = '';
+  state.labels.forEach(l => {
+    const el = document.createElement('span');
+    el.className = 'legend-item';
+    el.textContent = l.name;
+    el.style.background = l.color;
+    el.title = l.type;
+    $legend.appendChild(el);
+  });
+}
 
-function checkUnallocatedWarning() {
-  const now = Date.now();
-  const openSeg = state.segments.find(s => s.end === null);
-  if (!openSeg || openSeg.label) {
-    hideBanner();
-    return;
+/* ── Timeline ───────────────────────────────────────────────────────── */
+function renderRuler() {
+  $ruler.innerHTML = '';
+  if (!$track.offsetWidth) return;
+  const total = shiftDurationMs();
+  const step  = 30 * 60 * 1000;
+  for (let t = 0; t <= total; t += step) {
+    const el = document.createElement('div');
+    el.className = 'ruler-tick' + (t % (3600_000) === 0 ? ' major' : '');
+    el.style.left = (t / total * 100) + '%';
+    el.textContent = formatTime(state.shiftStart + t);
+    $ruler.appendChild(el);
   }
-  const dur = now - openSeg.start;
-  if (dur >= LARGE_UNALLOCATED_THRESHOLD_MS) {
-    showBanner(openSeg, dur);
-  } else {
-    hideBanner();
+}
+
+function renderTimeline() {
+  const now   = Date.now();
+  const total = shiftDurationMs();
+  if (!$track.offsetWidth || total <= 0) return;
+
+  const elapsed = Math.max(0, Math.min(now - state.shiftStart, total));
+  const phPct   = elapsed / total * 100;
+
+  $playhead.style.left = phPct + '%';
+  $future.style.left   = phPct + '%';
+  $shiftRange.textContent = `${formatTime(state.shiftStart)} – ${formatTime(state.shiftEnd)}`;
+
+  $segs.innerHTML = '';
+
+  state.segments.forEach((seg, i) => {
+    const sStart = Math.max(seg.start, state.shiftStart);
+    const sEnd   = seg.end ? Math.min(seg.end, state.shiftEnd) : Math.min(now, state.shiftEnd);
+    const lPct   = (sStart - state.shiftStart) / total * 100;
+    const wPct   = Math.max(0, (sEnd - sStart) / total * 100);
+    if (wPct <= 0) return;
+
+    const el = document.createElement('div');
+    el.className = 'segment' + (seg.id === selectedSegId ? ' selected' : '') + (wPct > 3 ? ' wide' : '');
+    el.style.left       = lPct + '%';
+    el.style.width      = wPct + '%';
+    el.style.background = getLabelColor(seg.labelName);
+
+    const lbl = document.createElement('div');
+    lbl.className   = 'segment-label';
+    lbl.textContent = seg.labelName || 'Unallocated';
+    el.appendChild(lbl);
+
+    el.addEventListener('mouseenter', e => {
+      const t = getTooltip();
+      const dur = (seg.end || now) - seg.start;
+      const note = seg.note ? ` · "${seg.note.slice(0,40)}"` : '';
+      t.textContent = `${seg.labelName || 'Unallocated'} · ${formatDuration(dur)} · ${formatTime(seg.start)}–${formatTime(seg.end || now)}${note}`;
+      t.classList.add('visible');
+      moveTooltip(e);
+    });
+    el.addEventListener('mousemove', moveTooltip);
+    el.addEventListener('mouseleave', () => getTooltip().classList.remove('visible'));
+    el.addEventListener('click', e => { e.stopPropagation(); seg.id === selectedSegId ? deselect() : selectSeg(seg.id); });
+    el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(e, seg.id); });
+
+    $segs.appendChild(el);
+
+    // boundary drag handle between this seg and next
+    if (i < state.segments.length - 1 && seg.end !== null) {
+      const hPct = (seg.end - state.shiftStart) / total * 100;
+      const h = document.createElement('div');
+      h.className = 'seg-handle';
+      h.style.left = hPct + '%';
+      h.addEventListener('mousedown', e => startDrag(e, seg.id, state.segments[i + 1].id));
+      $segs.appendChild(h);
+    }
+  });
+}
+
+/* ── Boundary drag ──────────────────────────────────────────────────── */
+function startDrag(e, leftId, rightId) {
+  e.preventDefault(); e.stopPropagation();
+  const rect = $track.getBoundingClientRect();
+  const total = shiftDurationMs();
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  function onMove(ev) {
+    const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+    const boundary = state.shiftStart + pct * total;
+    const left  = state.segments.find(s => s.id === leftId);
+    const right = state.segments.find(s => s.id === rightId);
+    if (!left || !right) return;
+    const rightMax = right.end || Math.min(Date.now(), state.shiftEnd);
+    const clamped  = Math.max(left.start + MIN_SEGMENT_MS, Math.min(rightMax - MIN_SEGMENT_MS, boundary));
+    left.end   = clamped;
+    right.start = clamped;
+    renderTimeline();
   }
+  function onUp() {
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    saveState(); renderStats();
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+/* ── Warn banner ────────────────────────────────────────────────────── */
+function checkWarn() {
+  const now  = Date.now();
+  const open = state.segments.find(s => s.end === null);
+  if (!open || open.labelName) { hideBanner(); return; }
+  const dur = now - open.start;
+  if (dur >= WARN_THRESHOLD) showBanner(open, dur); else hideBanner();
 }
 
 function showBanner(seg, dur) {
   if (!bannerEl) {
     bannerEl = document.createElement('div');
     bannerEl.id = 'unallocated-banner';
-    bannerEl.innerHTML = `<span></span><button>Split or label</button>`;
-    bannerEl.querySelector('button').addEventListener('click', () => {
-      selectSegment(seg.id);
-      hideBanner();
-    });
-    // insert after stats panel
-    const stats = document.getElementById('stats-panel');
-    stats.insertAdjacentElement('afterend', bannerEl);
+    bannerEl.innerHTML = '<span></span><button>Split or label</button>';
+    bannerEl.querySelector('button').addEventListener('click', () => { selectSeg(bannerSegId); hideBanner(); });
+    document.getElementById('stats-panel').insertAdjacentElement('afterend', bannerEl);
   }
-  bannerEl.querySelector('span').textContent =
-    `Large unallocated block: ${formatDuration(dur)} unlabeled`;
+  bannerSegId = seg.id;
+  bannerEl.querySelector('span').textContent = `Large unallocated block: ${formatDuration(dur)}`;
   bannerEl.classList.remove('hidden');
 }
 
-function hideBanner() {
-  if (bannerEl) bannerEl.classList.add('hidden');
-}
+function hideBanner() { if (bannerEl) bannerEl.classList.add('hidden'); }
 
-/* ── Timeline rendering ─────────────────────────────────────────────── */
-function renderRuler() {
-  $timeRuler.innerHTML = '';
-  const trackW = $timelineTrack.offsetWidth;
-  if (!trackW) return;
-
-  const total = SHIFT_DURATION_MS;
-  const stepMs = 30 * 60 * 1000; // 30-min ticks
-
-  for (let t = 0; t <= total; t += stepMs) {
-    const pct = t / total;
-    const tick = document.createElement('div');
-    tick.className = 'ruler-tick' + (t % (60 * 60 * 1000) === 0 ? ' major' : '');
-    tick.style.left = (pct * 100) + '%';
-    tick.textContent = formatTime(state.shiftStart + t);
-    $timeRuler.appendChild(tick);
-  }
-}
-
-function renderTimeline() {
-  const now = Date.now();
-  const trackW = $timelineTrack.offsetWidth;
-  if (!trackW) return;
-
-  const total = SHIFT_DURATION_MS;
-  const elapsed = Math.max(0, Math.min(now - state.shiftStart, total));
-  const playheadPct = elapsed / total;
-
-  // playhead
-  $playhead.style.left = (playheadPct * 100) + '%';
-
-  // future overlay
-  $futureOverlay.style.left = (playheadPct * 100) + '%';
-  $futureOverlay.style.right = '0';
-
-  // shift time range label
-  $shiftTimeRange.textContent = `${formatTime(state.shiftStart)} – ${formatTime(state.shiftEnd)}`;
-
-  // clear old segment elements
-  $segmentsContainer.innerHTML = '';
-
-  state.segments.forEach(seg => {
-    const segStart = Math.max(seg.start, state.shiftStart);
-    const segEnd   = seg.end ? Math.min(seg.end, state.shiftEnd)
-                             : Math.min(now, state.shiftEnd);
-
-    const leftPct  = ((segStart - state.shiftStart) / total) * 100;
-    const widthPct = Math.max(0, ((segEnd - segStart) / total) * 100);
-    if (widthPct <= 0) return;
-
-    const el = document.createElement('div');
-    el.className = 'segment ' + catClass(seg.label);
-    if (seg.id === selectedSegId) el.classList.add('selected');
-    if (widthPct > 3) el.classList.add('wide'); // show label when wide enough
-
-    el.style.left  = leftPct + '%';
-    el.style.width = widthPct + '%';
-    if (seg.label) el.style.background = catColor(seg.label);
-
-    // inner label
-    const labelEl = document.createElement('div');
-    labelEl.className = 'segment-label';
-    labelEl.textContent = seg.label || 'Unallocated';
-    el.appendChild(labelEl);
-
-    // tooltip
-    el.addEventListener('mouseenter', e => {
-      const tip = ensureTooltip();
-      const dur = (seg.end || now) - seg.start;
-      tip.textContent = `${seg.label || 'Unallocated'} · ${formatDuration(dur)} · ${formatTime(seg.start)}–${formatTime(seg.end || now)}`;
-      tip.classList.add('visible');
-      moveTooltip(e);
-    });
-    el.addEventListener('mousemove', moveTooltip);
-    el.addEventListener('mouseleave', () => {
-      ensureTooltip().classList.remove('visible');
-    });
-
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      if (seg.id === selectedSegId) {
-        deselectSegment();
-      } else {
-        selectSegment(seg.id);
-      }
-    });
-
-    $segmentsContainer.appendChild(el);
-  });
-}
-
-function moveTooltip(e) {
-  const tip = ensureTooltip();
-  const x = e.clientX + 12;
-  const y = e.clientY - 30;
-  tip.style.left = x + 'px';
-  tip.style.top  = y + 'px';
-}
-
-/* ── Prompt helper ──────────────────────────────────────────────────── */
-function showPrompt(labelText, defaultVal, onConfirm) {
-  let overlay = document.getElementById('prompt-overlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'prompt-overlay';
-    overlay.innerHTML = `
-      <div id="prompt-box">
-        <label id="prompt-label"></label>
-        <input id="prompt-input" type="number" min="2" max="20" />
-        <div class="prompt-buttons">
-          <button id="prompt-cancel">Cancel</button>
-          <button id="prompt-ok" class="primary">OK</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-  document.getElementById('prompt-label').textContent = labelText;
-  const input = document.getElementById('prompt-input');
-  input.value = defaultVal;
-  overlay.classList.remove('hidden');
-  input.focus();
-  input.select();
-
-  const ok = () => {
-    const val = parseInt(input.value, 10);
-    overlay.classList.add('hidden');
-    if (val >= 2) onConfirm(val);
-  };
-  const cancel = () => overlay.classList.add('hidden');
-
-  document.getElementById('prompt-ok').onclick = ok;
-  document.getElementById('prompt-cancel').onclick = cancel;
-  input.onkeydown = e => {
-    if (e.key === 'Enter') ok();
-    if (e.key === 'Escape') cancel();
-  };
-  overlay.onclick = e => { if (e.target === overlay) cancel(); };
-}
-
-/* ── Reset ──────────────────────────────────────────────────────────── */
-function confirmReset() {
-  if (!confirm('Reset the current shift? This will clear all data and start a new shift.')) return;
-  localStorage.removeItem(STORAGE_KEY);
-  initShift();
-  selectedSegId = null;
-  closeEditor();
-  hideBanner();
-  renderRuler();
-  renderTimeline();
-  renderStats();
-  toast('New shift started');
-}
-
-/* ── Dark mode ──────────────────────────────────────────────────────── */
+/* ── Theme ──────────────────────────────────────────────────────────── */
 function initTheme() {
   const saved = localStorage.getItem('shift-theme');
-  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+  if (saved === 'dark' || (!saved && matchMedia('(prefers-color-scheme:dark)').matches))
     document.documentElement.setAttribute('data-theme', 'dark');
-  }
 }
-
 function toggleTheme() {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-  localStorage.setItem('shift-theme', isDark ? 'light' : 'dark');
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  localStorage.setItem('shift-theme', dark ? 'light' : 'dark');
 }
 
-/* ── Event wiring ───────────────────────────────────────────────────── */
-$cutBtn.addEventListener('click', cut);
+/* ── Time format ────────────────────────────────────────────────────── */
+function toggleFormat() {
+  state.settings.use24h = !state.settings.use24h;
+  $fmtBtn.textContent = state.settings.use24h ? '24h' : '12h';
+  saveState(); renderRuler(); renderTimeline();
+}
 
-$resetBtn.addEventListener('click', confirmReset);
+/* ── Context menu (stub — wired in part 2) ──────────────────────────── */
+function showCtxMenu(e, segId) {
+  contextTargetSegId = segId || null;
+  const now  = Date.now();
+  const idx  = segId ? state.segments.findIndex(s => s.id === segId) : -1;
+  const has  = idx !== -1;
+  const shiftActive = now >= state.shiftStart && now < state.shiftEnd;
 
-$themeBtn.addEventListener('click', toggleTheme);
+  document.getElementById('cm-cut').classList.toggle('disabled', !shiftActive);
+  document.getElementById('cm-edit').classList.toggle('disabled', !has);
+  document.getElementById('cm-merge-prev').classList.toggle('disabled', !(has && idx > 0));
+  document.getElementById('cm-merge-next').classList.toggle('disabled', !(has && idx < state.segments.length - 1));
+  document.getElementById('cm-split-half').classList.toggle('disabled', !has);
+  document.getElementById('cm-split-n').classList.toggle('disabled', !has);
 
-$editorClose.addEventListener('click', deselectSegment);
+  $ctxMenu.classList.remove('hidden');
+  const mw = 200, mh = 250;
+  let x = e.clientX, y = e.clientY;
+  if (x + mw > innerWidth)  x = innerWidth  - mw - 8;
+  if (y + mh > innerHeight) y = innerHeight - mh - 8;
+  $ctxMenu.style.left = x + 'px';
+  $ctxMenu.style.top  = y + 'px';
+}
+function hideCtxMenu() { $ctxMenu.classList.add('hidden'); contextTargetSegId = null; }
 
-$customLabelBtn.addEventListener('click', () => {
-  const val = $customLabelInput.value.trim();
-  if (val) applyLabel(val);
-});
-
-$customLabelInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    const val = $customLabelInput.value.trim();
-    if (val) applyLabel(val);
-  }
-});
-
-$splitHalvesBtn.addEventListener('click', () => {
-  if (selectedSegId) splitSegmentInto(selectedSegId, 2);
-});
-
-$splitNBtn.addEventListener('click', () => {
-  if (!selectedSegId) return;
-  showPrompt('Split into how many equal parts?', 3, n => splitSegmentInto(selectedSegId, n));
-});
-
-// close editor on clicking outside
-document.addEventListener('click', e => {
-  if (selectedSegId &&
-      !$editorPanel.contains(e.target) &&
-      !$timelineTrack.contains(e.target)) {
-    deselectSegment();
-  }
-});
-
-// keyboard shortcut: C or Space = CUT
-document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  if (e.key === 'c' || e.key === 'C' || e.key === ' ') {
-    e.preventDefault();
-    cut();
-  }
-  if (e.key === 'Escape') deselectSegment();
-});
-
-/* ── Tick loop ──────────────────────────────────────────────────────── */
-let lastWarningCheck = 0;
-
+/* ── Tick ───────────────────────────────────────────────────────────── */
 function tick() {
   const now = Date.now();
   renderTimeline();
   renderStats();
-
-  // check unallocated warning every 30s
-  if (now - lastWarningCheck > 30_000) {
-    lastWarningCheck = now;
-    checkUnallocatedWarning();
-  }
-
-  // auto-close open segment when shift ends
-  const openSeg = state.segments.find(s => s.end === null);
-  if (openSeg && now >= state.shiftEnd) {
-    openSeg.end = state.shiftEnd;
+  if (now - lastWarnCheck > 30_000) { lastWarnCheck = now; checkWarn(); }
+  const open = state.segments.find(s => s.end === null);
+  if (open && now >= state.shiftEnd) {
+    open.end = state.shiftEnd;
     saveState();
-    toast('Shift ended — all segments closed.');
+    toast('Shift ended — segments closed.');
   }
 }
 
-/* ── Init ───────────────────────────────────────────────────────────── */
+/* ── Init (part 1) ──────────────────────────────────────────────────── */
 function init() {
   initTheme();
-
-  const restored = loadState();
-  if (!restored || isShiftExpired()) {
-    initShift();
-  }
-
+  if (!loadState() || isExpired()) initShift(false);
+  $fmtBtn.textContent = state.settings.use24h ? '24h' : '12h';
   renderRuler();
   renderTimeline();
   renderStats();
+  renderLegend();
+  new ResizeObserver(() => { renderRuler(); renderTimeline(); }).observe($track);
 
-  // re-render ruler on resize
-  const ro = new ResizeObserver(() => {
-    renderRuler();
-    renderTimeline();
+  // basic event wiring (rest in part 2)
+  $themeBtn.addEventListener('click', toggleTheme);
+  $fmtBtn.addEventListener('click', toggleFormat);
+  $edClose.addEventListener('click', deselect);
+  $splitHalf.addEventListener('click', () => { if (selectedSegId) splitInto(selectedSegId, 2); });
+  $mergePrev.addEventListener('click', mergeWithPrev);
+  $mergeNext.addEventListener('click', mergeWithNext);
+  $track.addEventListener('contextmenu', e => { e.preventDefault(); showCtxMenu(e, null); });
+
+  document.addEventListener('click', e => {
+    if (!$ctxMenu.contains(e.target)) hideCtxMenu();
+    if (!$exportMenu.contains(e.target) && e.target !== $exportBtn) $exportMenu.classList.add('hidden');
+    if (selectedSegId && !$editor.contains(e.target) && !$track.contains(e.target)) deselect();
   });
-  ro.observe($timelineTrack);
 
-  setInterval(tick, TICK_INTERVAL_MS);
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'c' || e.key === 'C' || e.key === ' ') { e.preventDefault(); cut(); }
+    if (e.key === 'Escape') { deselect(); hideCtxMenu(); }
+  });
+
+  setInterval(tick, TICK_MS);
+}
+
+/* ── Split & Merge (needed by editor buttons above) ─────────────────── */
+function splitInto(id, n) {
+  const idx = state.segments.findIndex(s => s.id === id);
+  if (idx === -1 || n < 2) return;
+  const seg = state.segments[idx];
+  const now = Date.now();
+  const end = seg.end || Math.min(now, state.shiftEnd);
+  if (end <= seg.start) return;
+  const chunk = (end - seg.start) / n;
+  const fresh = Array.from({ length: n }, (_, i) => ({
+    id: uid(),
+    start: seg.start + i * chunk,
+    end:   seg.end !== null || i < n - 1 ? seg.start + (i + 1) * chunk : null,
+    labelName: null,
+    note: '',
+  }));
+  state.segments.splice(idx, 1, ...fresh);
+  selectedSegId = fresh[0].id;
+  saveState(); renderTimeline(); renderStats(); openEditor();
+  toast(`Split into ${n} segments`);
+}
+
+function mergeWithPrev() {
+  const idx = state.segments.findIndex(s => s.id === selectedSegId);
+  if (idx > 0) mergePair(idx - 1, idx);
+}
+function mergeWithNext() {
+  const idx = state.segments.findIndex(s => s.id === selectedSegId);
+  if (idx < state.segments.length - 1) mergePair(idx, idx + 1);
+}
+function mergePair(li, ri) {
+  const L = state.segments[li], R = state.segments[ri];
+  if (!L || !R) return;
+  const now = Date.now();
+  const lDur = (L.end || now) - L.start;
+  const rDur = (R.end || now) - R.start;
+  const merged = {
+    id: uid(),
+    start: L.start,
+    end:   R.end,
+    labelName: lDur >= rDur ? L.labelName : R.labelName,
+    note: [L.note, R.note].filter(Boolean).join(' | '),
+  };
+  state.segments.splice(li, 2, merged);
+  selectedSegId = merged.id;
+  saveState(); renderTimeline(); renderStats(); openEditor();
+  toast('Segments merged');
 }
 
 init();

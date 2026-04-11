@@ -4,29 +4,43 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shift Timeline</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Shift" />
+  <link rel="apple-touch-icon" href="icon.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
-    <!-- Header -->
+
+    <!-- ── Header ── -->
     <header id="header">
       <div id="header-left">
         <span id="shift-label">Shift</span>
-        <span id="shift-time-range"></span>
-      </div>
-      <div id="header-center">
-        <button id="cut-btn" title="Cut segment (shortcut: C or Space)">
-          <span class="cut-icon">✂</span>
-          <span>CUT</span>
-        </button>
+        <button id="shift-time-range" title="Click to adjust shift times"></button>
       </div>
       <div id="header-right">
+        <button id="time-format-btn" title="Toggle 12 / 24-hour format">12h</button>
         <button id="theme-btn" title="Toggle dark mode">◑</button>
-        <button id="reset-btn" title="Reset shift">↺ Reset</button>
+        <button id="labels-btn" title="Manage labels">Labels ⚙</button>
+        <div class="btn-group">
+          <button id="export-btn" title="Export data">Export ↓</button>
+          <div id="export-menu" class="dropdown hidden">
+            <button data-action="export-json">Briefcase (.json)</button>
+            <button data-action="export-csv-detail">Detailed CSV</button>
+            <button data-action="export-csv-summary">Summary CSV</button>
+          </div>
+        </div>
+        <label id="import-label" title="Import a briefcase .json file">
+          Import ↑
+          <input id="import-file" type="file" accept=".json" />
+        </label>
+        <button id="reset-btn" title="Start a new shift">↺ Reset</button>
       </div>
     </header>
 
-    <!-- Timeline -->
+    <!-- ── Timeline ── -->
     <div id="timeline-wrapper">
       <div id="time-ruler"></div>
       <div id="timeline-track">
@@ -34,42 +48,51 @@
         <div id="playhead"></div>
         <div id="future-overlay"></div>
       </div>
+      <div id="timeline-hint">Right-click on timeline to cut &nbsp;·&nbsp; C / Space shortcut</div>
     </div>
 
-    <!-- Segment editor panel -->
+    <!-- ── Segment editor ── -->
     <div id="editor-panel" class="hidden">
       <div id="editor-header">
         <span id="editor-seg-time"></span>
-        <button id="editor-close">✕</button>
+        <div id="editor-actions">
+          <button id="merge-prev-btn" disabled>⟵ Merge prev</button>
+          <button id="merge-next-btn" disabled>Merge next ⟶</button>
+          <button id="editor-close">✕</button>
+        </div>
       </div>
       <div id="editor-body">
         <div id="label-section">
           <label>Category</label>
           <div id="category-chips"></div>
-          <div id="custom-label-row">
-            <input id="custom-label-input" type="text" placeholder="Custom label…" maxlength="40" />
-            <button id="custom-label-btn">Apply</button>
-          </div>
         </div>
         <div id="split-section">
-          <label>Split segment</label>
+          <label>Split</label>
           <div id="split-buttons">
             <button id="split-halves-btn">½ Halves</button>
             <button id="split-n-btn">÷ Into N</button>
           </div>
         </div>
+        <div id="notes-section">
+          <label>Notes</label>
+          <textarea id="notes-input" placeholder="Add a note for this segment…" rows="2"></textarea>
+        </div>
       </div>
     </div>
 
-    <!-- Stats panel -->
+    <!-- ── Stats ── -->
     <div id="stats-panel">
       <div class="stat-item">
-        <span class="stat-label">Allocated</span>
-        <span class="stat-value" id="stat-allocated">0:00</span>
+        <span class="stat-label">Work time</span>
+        <span class="stat-value" id="stat-work">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Non-work</span>
+        <span class="stat-value" id="stat-nonwork">—</span>
       </div>
       <div class="stat-item">
         <span class="stat-label">Unallocated</span>
-        <span class="stat-value" id="stat-unallocated">0:00</span>
+        <span class="stat-value" id="stat-unallocated">—</span>
       </div>
       <div class="stat-item">
         <span class="stat-label">Segments</span>
@@ -81,23 +104,99 @@
       </div>
       <div class="stat-item">
         <span class="stat-label">Longest focus</span>
-        <span class="stat-value" id="stat-longest">0:00</span>
+        <span class="stat-value" id="stat-longest">—</span>
       </div>
       <div class="stat-item">
         <span class="stat-label">Avg segment</span>
-        <span class="stat-value" id="stat-avg">0:00</span>
+        <span class="stat-value" id="stat-avg">—</span>
       </div>
-      <div id="legend">
-        <span class="legend-item" data-cat="Work">Work</span>
-        <span class="legend-item" data-cat="Meeting">Meeting</span>
-        <span class="legend-item" data-cat="Break">Break</span>
-        <span class="legend-item" data-cat="Interruption">Interruption</span>
-        <span class="legend-item" data-cat="Admin">Admin</span>
+      <div id="legend"></div>
+    </div>
+
+    <!-- ── Context menu ── -->
+    <div id="context-menu" class="hidden">
+      <div id="cm-cut"        class="cm-item cm-primary">✂&nbsp; Cut now</div>
+      <div class="cm-sep"></div>
+      <div id="cm-edit"       class="cm-item">Edit segment…</div>
+      <div id="cm-merge-prev" class="cm-item">⟵ Merge with previous</div>
+      <div id="cm-merge-next" class="cm-item">Merge with next ⟶</div>
+      <div class="cm-sep"></div>
+      <div id="cm-split-half" class="cm-item">Split in half</div>
+      <div id="cm-split-n"    class="cm-item">Split into N…</div>
+      <div class="cm-sep"></div>
+      <div id="cm-adjust"     class="cm-item">Adjust shift times…</div>
+    </div>
+
+    <!-- ── Toast ── -->
+    <div id="toast-container"></div>
+
+    <!-- ── Drag-and-drop overlay ── -->
+    <div id="drop-overlay" class="hidden">
+      <div id="drop-box">
+        <div class="drop-icon">📁</div>
+        <div>Drop briefcase file to import</div>
       </div>
     </div>
 
-    <!-- Toast notifications -->
-    <div id="toast-container"></div>
+  </div><!-- #app -->
+
+  <!-- ── Labels modal ── -->
+  <div id="labels-modal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header">
+        <h2>Manage Labels</h2>
+        <button class="modal-close" data-close="labels-modal">✕</button>
+      </div>
+      <div class="modal-body" id="labels-list"></div>
+      <div class="modal-footer">
+        <button id="add-label-btn">+ Add Label</button>
+        <button id="labels-done-btn" class="primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Shift times modal ── -->
+  <div id="shift-modal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:340px">
+      <div class="modal-header">
+        <h2>Adjust Shift Times</h2>
+        <button class="modal-close" data-close="shift-modal">✕</button>
+      </div>
+      <div class="modal-body" id="shift-form">
+        <div class="form-row">
+          <label>Start</label>
+          <input type="time" id="shift-start-input" />
+        </div>
+        <div class="form-row">
+          <label>End</label>
+          <input type="time" id="shift-end-input" />
+        </div>
+        <div id="shift-warning"></div>
+      </div>
+      <div class="modal-footer">
+        <button data-close="shift-modal">Cancel</button>
+        <button id="shift-apply-btn" class="primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Number prompt modal ── -->
+  <div id="prompt-overlay" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:300px">
+      <div class="modal-header">
+        <label id="prompt-label" style="font-size:14px;font-weight:600;"></label>
+      </div>
+      <div class="modal-body">
+        <input id="prompt-input" type="number" min="2" max="20"
+               style="width:100%;padding:8px 10px;border:1px solid var(--border);
+                      border-radius:var(--radius);background:var(--bg);
+                      color:var(--text);font-size:14px;" />
+      </div>
+      <div class="modal-footer">
+        <button id="prompt-cancel">Cancel</button>
+        <button id="prompt-ok" class="primary">OK</button>
+      </div>
+    </div>
   </div>
 
   <script src="script.js"></script>

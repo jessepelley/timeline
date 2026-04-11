@@ -1,0 +1,17 @@
+{
+  "name": "Shift Timeline",
+  "short_name": "Shift",
+  "description": "Shift segmentation and time-allocation tool",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

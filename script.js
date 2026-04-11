@@ -535,7 +535,11 @@ function init() {
   $splitHalf.addEventListener('click', () => { if (selectedSegId) splitInto(selectedSegId, 2); });
   $mergePrev.addEventListener('click', mergeWithPrev);
   $mergeNext.addEventListener('click', mergeWithNext);
-  $track.addEventListener('contextmenu', e => { e.preventDefault(); showCtxMenu(e, null); });
+  $track.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(e, null); });
+
+  document.addEventListener('contextmenu', e => {
+    if (!$ctxMenu.contains(e.target)) hideCtxMenu();
+  });
 
   document.addEventListener('click', e => {
     if (!$ctxMenu.contains(e.target)) hideCtxMenu();

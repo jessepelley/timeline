@@ -603,6 +603,8 @@ html, body {
   padding: 4px 0;
   animation: menu-in .12s ease;
 }
+#context-menu.hidden { display: none; }
+.dropdown.hidden { display: none; }
 
 @keyframes menu-in {
   from { opacity: 0; transform: scale(.96) translateY(-4px); }

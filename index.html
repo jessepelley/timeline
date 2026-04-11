@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shift Timeline</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="header">
+      <div id="header-left">
+        <span id="shift-label">Shift</span>
+        <span id="shift-time-range"></span>
+      </div>
+      <div id="header-center">
+        <button id="cut-btn" title="Cut segment (shortcut: C or Space)">
+          <span class="cut-icon">✂</span>
+          <span>CUT</span>
+        </button>
+      </div>
+      <div id="header-right">
+        <button id="theme-btn" title="Toggle dark mode">◑</button>
+        <button id="reset-btn" title="Reset shift">↺ Reset</button>
+      </div>
+    </header>
+
+    <!-- Timeline -->
+    <div id="timeline-wrapper">
+      <div id="time-ruler"></div>
+      <div id="timeline-track">
+        <div id="segments-container"></div>
+        <div id="playhead"></div>
+        <div id="future-overlay"></div>
+      </div>
+    </div>
+
+    <!-- Segment editor panel -->
+    <div id="editor-panel" class="hidden">
+      <div id="editor-header">
+        <span id="editor-seg-time"></span>
+        <button id="editor-close">✕</button>
+      </div>
+      <div id="editor-body">
+        <div id="label-section">
+          <label>Category</label>
+          <div id="category-chips"></div>
+          <div id="custom-label-row">
+            <input id="custom-label-input" type="text" placeholder="Custom label…" maxlength="40" />
+            <button id="custom-label-btn">Apply</button>
+          </div>
+        </div>
+        <div id="split-section">
+          <label>Split segment</label>
+          <div id="split-buttons">
+            <button id="split-halves-btn">½ Halves</button>
+            <button id="split-n-btn">÷ Into N</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats panel -->
+    <div id="stats-panel">
+      <div class="stat-item">
+        <span class="stat-label">Allocated</span>
+        <span class="stat-value" id="stat-allocated">0:00</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Unallocated</span>
+        <span class="stat-value" id="stat-unallocated">0:00</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Segments</span>
+        <span class="stat-value" id="stat-segments">1</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Interruptions</span>
+        <span class="stat-value" id="stat-interruptions">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Longest focus</span>
+        <span class="stat-value" id="stat-longest">0:00</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Avg segment</span>
+        <span class="stat-value" id="stat-avg">0:00</span>
+      </div>
+      <div id="legend">
+        <span class="legend-item" data-cat="Work">Work</span>
+        <span class="legend-item" data-cat="Meeting">Meeting</span>
+        <span class="legend-item" data-cat="Break">Break</span>
+        <span class="legend-item" data-cat="Interruption">Interruption</span>
+        <span class="legend-item" data-cat="Admin">Admin</span>
+      </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast-container"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -48,6 +48,36 @@
       </div>
     </div>
 
+    <!-- ── Shift panel (inline, swaps for timeline) ── -->
+    <div id="shift-panel" class="hidden">
+      <div class="panel-header">
+        <span>Adjust Shift Times</span>
+        <button id="shift-panel-cancel">Cancel</button>
+        <button id="shift-apply-btn" class="primary">Apply</button>
+      </div>
+      <div class="panel-body">
+        <div class="form-row">
+          <label>Start</label>
+          <input type="time" id="shift-start-input" />
+        </div>
+        <div class="form-row" style="margin-bottom:0">
+          <label>End</label>
+          <input type="time" id="shift-end-input" />
+        </div>
+        <div id="shift-warning"></div>
+      </div>
+    </div>
+
+    <!-- ── Labels panel (inline, swaps for timeline) ── -->
+    <div id="labels-panel" class="hidden">
+      <div class="panel-header">
+        <span>Labels</span>
+        <button id="add-label-btn">+ Add</button>
+        <button id="labels-done-btn">Done</button>
+      </div>
+      <div class="panel-body" id="labels-list"></div>
+    </div>
+
     <!-- ── Stats ── -->
     <div id="stats-panel">
       <div class="stat-item">
@@ -101,9 +131,12 @@
 
     <!-- ── Context menu ── -->
     <div id="context-menu" class="hidden">
-      <div id="cm-cut"  class="cm-item cm-primary">✂&nbsp; Cut now</div>
+      <div id="cm-cut" class="cm-item cm-primary">✂&nbsp; Cut now</div>
       <div class="cm-sep"></div>
-      <div id="cm-edit" class="cm-item">Edit segment…</div>
+      <div class="cm-row">
+        <div id="cm-merge-prev" class="cm-item">⟵ Merge</div>
+        <div id="cm-merge-next" class="cm-item">Merge ⟶</div>
+      </div>
     </div>
 
     <!-- ── Toast ── -->
@@ -118,46 +151,6 @@
     </div>
 
   </div><!-- #app -->
-
-  <!-- ── Labels modal ── -->
-  <div id="labels-modal" class="modal-overlay hidden">
-    <div class="modal-box" style="max-width:520px">
-      <div class="modal-header">
-        <h2>Manage Labels</h2>
-        <button class="modal-close" data-close="labels-modal">✕</button>
-      </div>
-      <div class="modal-body" id="labels-list"></div>
-      <div class="modal-footer">
-        <button id="add-label-btn">+ Add Label</button>
-        <button id="labels-done-btn" class="primary">Done</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Shift times modal ── -->
-  <div id="shift-modal" class="modal-overlay hidden">
-    <div class="modal-box" style="max-width:340px">
-      <div class="modal-header">
-        <h2>Adjust Shift Times</h2>
-        <button class="modal-close" data-close="shift-modal">✕</button>
-      </div>
-      <div class="modal-body" id="shift-form">
-        <div class="form-row">
-          <label>Start</label>
-          <input type="time" id="shift-start-input" />
-        </div>
-        <div class="form-row">
-          <label>End</label>
-          <input type="time" id="shift-end-input" />
-        </div>
-        <div id="shift-warning"></div>
-      </div>
-      <div class="modal-footer">
-        <button data-close="shift-modal">Cancel</button>
-        <button id="shift-apply-btn" class="primary">Apply</button>
-      </div>
-    </div>
-  </div>
 
   <!-- ── Number prompt modal ── -->
   <div id="prompt-overlay" class="modal-overlay hidden">

@@ -451,6 +451,48 @@ html, body {
 }
 #notes-input:focus { border-color: var(--accent); outline: none; }
 
+/* ── Inline panels (shift / labels, swap for timeline) ─────────────── */
+#shift-panel, #labels-panel {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+#shift-panel.hidden, #labels-panel.hidden { display: none; }
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+}
+.panel-header > span { flex: 1; }
+.panel-header button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  padding: 3px 9px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  line-height: 1.4;
+}
+.panel-header button:hover { background: var(--border); color: var(--text); }
+.panel-header button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+
+.panel-body {
+  padding: 10px 14px;
+  overflow-y: auto;
+}
+
+#labels-panel .panel-body { max-height: 150px; }
+
 /* ── Stats panel ───────────────────────────────────────────────────── */
 #stats-panel {
   display: flex;
@@ -552,6 +594,18 @@ html, body {
   user-select: none;
 }
 .cm-item:hover { background: var(--bg); }
+
+.cm-row {
+  display: flex;
+}
+.cm-row .cm-item {
+  flex: 1;
+  text-align: center;
+  padding: 7px 8px;
+}
+.cm-row .cm-item:first-child {
+  border-right: 1px solid var(--border);
+}
 .cm-item.cm-primary { font-weight: 700; color: #ef4444; }
 .cm-item.disabled { opacity: .35; pointer-events: none; }
 .cm-sep { height: 1px; background: var(--border); margin: 3px 0; }

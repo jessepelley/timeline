@@ -489,7 +489,8 @@ function showCtxMenu(e, segId) {
   const shiftActive = now >= state.shiftStart && now < state.shiftEnd;
 
   document.getElementById('cm-cut').classList.toggle('disabled', !shiftActive);
-  document.getElementById('cm-edit').classList.toggle('disabled', !has);
+  document.getElementById('cm-merge-prev').classList.toggle('disabled', !(has && idx > 0));
+  document.getElementById('cm-merge-next').classList.toggle('disabled', !(has && idx < state.segments.length - 1));
 
   $ctxMenu.classList.remove('hidden');
   const mw = 200;
@@ -612,8 +613,9 @@ $ctxMenu.addEventListener('click', e => {
   if (!item || item.classList.contains('disabled')) return;
   hideCtxMenu();
   switch (item.id) {
-    case 'cm-cut':  cut(); break;
-    case 'cm-edit': if (contextTargetSegId) selectSeg(contextTargetSegId); break;
+    case 'cm-cut':        cut(); break;
+    case 'cm-merge-prev': if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithPrev(); } break;
+    case 'cm-merge-next': if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithNext(); } break;
   }
 });
 
@@ -646,12 +648,25 @@ $resetBtn.addEventListener('click', () => {
   toast('New shift started');
 });
 
+/* ── Panel show/hide helpers ────────────────────────────────────────── */
+function restoreTimeline() {
+  document.getElementById('timeline-wrapper').classList.remove('hidden');
+  document.getElementById('shift-panel').classList.add('hidden');
+  document.getElementById('labels-panel').classList.add('hidden');
+}
+
+function hideForPanel() {
+  if (selectedSegId) deselect();
+  document.getElementById('timeline-wrapper').classList.add('hidden');
+}
+
 /* ── Shift time adjustment ──────────────────────────────────────────── */
 function openShiftModal() {
+  hideForPanel();
   document.getElementById('shift-start-input').value = msToTimeInput(state.shiftStart);
   document.getElementById('shift-end-input').value   = msToTimeInput(state.shiftEnd);
   document.getElementById('shift-warning').textContent = '';
-  document.getElementById('shift-modal').classList.remove('hidden');
+  document.getElementById('shift-panel').classList.remove('hidden');
 }
 
 document.getElementById('shift-apply-btn').addEventListener('click', () => {
@@ -687,17 +702,19 @@ document.getElementById('shift-apply-btn').addEventListener('click', () => {
   state.shiftStart = newStart;
   state.shiftEnd   = newEnd;
   saveState();
-  document.getElementById('shift-modal').classList.add('hidden');
+  restoreTimeline();
   renderRuler(); renderTimeline(); renderStats();
   toast('Shift times updated');
 });
 
 $shiftBtn.addEventListener('click', openShiftModal);
+document.getElementById('shift-panel-cancel').addEventListener('click', restoreTimeline);
 
 /* ── Labels manager ─────────────────────────────────────────────────── */
 function openLabelsModal() {
+  hideForPanel();
   renderLabelsList();
-  document.getElementById('labels-modal').classList.remove('hidden');
+  document.getElementById('labels-panel').classList.remove('hidden');
 }
 
 function renderLabelsList() {
@@ -762,9 +779,7 @@ document.getElementById('add-label-btn').addEventListener('click', () => {
   if (rows.length) rows[rows.length - 1].querySelector('input[type="text"]')?.select();
 });
 
-document.getElementById('labels-done-btn').addEventListener('click', () => {
-  document.getElementById('labels-modal').classList.add('hidden');
-});
+document.getElementById('labels-done-btn').addEventListener('click', restoreTimeline);
 
 $labelsBtn.addEventListener('click', openLabelsModal);
 
@@ -890,16 +905,8 @@ $importFile.addEventListener('change', e => {
   });
 })();
 
-/* ── Modal close helpers ────────────────────────────────────────────── */
-document.querySelectorAll('.modal-close, [data-close]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.close;
-    if (id) document.getElementById(id).classList.add('hidden');
-  });
-});
-['labels-modal', 'shift-modal', 'prompt-overlay'].forEach(id => {
-  const el = document.getElementById(id);
-  el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
-});
+/* ── Modal close helpers (prompt only) ─────────────────────────────── */
+const $promptOverlay = document.getElementById('prompt-overlay');
+$promptOverlay.addEventListener('click', e => { if (e.target === $promptOverlay) $promptOverlay.classList.add('hidden'); });
 
 init();

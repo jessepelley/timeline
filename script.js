@@ -601,4 +601,312 @@ function mergePair(li, ri) {
   toast('Segments merged');
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   PART 2 — context menu, labels manager, shift adjust, exports, import
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Context menu actions ───────────────────────────────────────────── */
+$ctxMenu.addEventListener('click', e => {
+  const item = e.target.closest('.cm-item');
+  if (!item || item.classList.contains('disabled')) return;
+  hideCtxMenu();
+  switch (item.id) {
+    case 'cm-cut':        cut(); break;
+    case 'cm-edit':       if (contextTargetSegId) selectSeg(contextTargetSegId); break;
+    case 'cm-merge-prev':
+      if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithPrev(); } break;
+    case 'cm-merge-next':
+      if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithNext(); } break;
+    case 'cm-split-half': if (contextTargetSegId) splitInto(contextTargetSegId, 2); break;
+    case 'cm-split-n':
+      if (contextTargetSegId) showPrompt('Split into how many equal parts?', 3, n => splitInto(contextTargetSegId, n)); break;
+    case 'cm-adjust':     openShiftModal(); break;
+  }
+});
+
+/* ── Number prompt ──────────────────────────────────────────────────── */
+function showPrompt(msg, def, onOk) {
+  const ov = document.getElementById('prompt-overlay');
+  document.getElementById('prompt-label').textContent = msg;
+  const inp = document.getElementById('prompt-input');
+  inp.value = def;
+  ov.classList.remove('hidden');
+  inp.focus(); inp.select();
+  const ok = () => { const v = parseInt(inp.value, 10); ov.classList.add('hidden'); if (v >= 2) onOk(v); };
+  const cancel = () => ov.classList.add('hidden');
+  document.getElementById('prompt-ok').onclick     = ok;
+  document.getElementById('prompt-cancel').onclick = cancel;
+  inp.onkeydown = e => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') cancel(); };
+  ov.onclick    = e => { if (e.target === ov) cancel(); };
+}
+$splitN.addEventListener('click', () => {
+  if (selectedSegId) showPrompt('Split into how many equal parts?', 3, n => splitInto(selectedSegId, n));
+});
+
+/* ── Reset ──────────────────────────────────────────────────────────── */
+$resetBtn.addEventListener('click', () => {
+  if (!confirm('Reset shift? Segment data will be cleared. Labels and settings are kept.')) return;
+  initShift(true);
+  selectedSegId = null;
+  closeEditor(); hideBanner();
+  renderRuler(); renderTimeline(); renderStats(); renderLegend();
+  toast('New shift started');
+});
+
+/* ── Shift time adjustment ──────────────────────────────────────────── */
+function openShiftModal() {
+  document.getElementById('shift-start-input').value = msToTimeInput(state.shiftStart);
+  document.getElementById('shift-end-input').value   = msToTimeInput(state.shiftEnd);
+  document.getElementById('shift-warning').textContent = '';
+  document.getElementById('shift-modal').classList.remove('hidden');
+}
+
+document.getElementById('shift-apply-btn').addEventListener('click', () => {
+  const startStr = document.getElementById('shift-start-input').value;
+  const endStr   = document.getElementById('shift-end-input').value;
+  if (!startStr || !endStr) return;
+
+  let newStart = timeInputToMs(startStr, state.shiftStart);
+  let newEnd   = timeInputToMs(endStr,   state.shiftStart);
+  if (newEnd <= newStart) newEnd += 86_400_000; // crosses midnight
+
+  const warn = document.getElementById('shift-warning');
+  warn.textContent = newEnd - newStart > 43_200_000 ? 'Warning: shift is over 12 hours.' : '';
+
+  const oldStart = state.shiftStart;
+
+  // slide first segment if it was anchored to old start
+  if (state.segments.length && state.segments[0].start === oldStart)
+    state.segments[0].start = newStart;
+
+  // drop segments fully outside new window, clamp overlapping ones
+  state.segments = state.segments.filter(seg => {
+    const e = seg.end || newEnd;
+    return seg.start < newEnd && e > newStart;
+  });
+  state.segments.forEach(seg => {
+    if (seg.start < newStart) seg.start = newStart;
+    if (seg.end !== null && seg.end > newEnd) seg.end = newEnd;
+  });
+  if (!state.segments.length)
+    state.segments = [{ id: uid(), start: newStart, end: null, labelName: null, note: '' }];
+
+  state.shiftStart = newStart;
+  state.shiftEnd   = newEnd;
+  saveState();
+  document.getElementById('shift-modal').classList.add('hidden');
+  renderRuler(); renderTimeline(); renderStats();
+  toast('Shift times updated');
+});
+
+$shiftRange.addEventListener('click', openShiftModal);
+
+/* ── Labels manager ─────────────────────────────────────────────────── */
+function openLabelsModal() {
+  renderLabelsList();
+  document.getElementById('labels-modal').classList.remove('hidden');
+}
+
+function renderLabelsList() {
+  const list = document.getElementById('labels-list');
+  list.innerHTML = '';
+  state.labels.forEach((lbl, i) => {
+    const row = document.createElement('div');
+    row.className = 'label-row';
+
+    const swatch = document.createElement('input');
+    swatch.type = 'color'; swatch.value = lbl.color;
+    swatch.className = 'label-color-swatch';
+    swatch.addEventListener('input', e => {
+      lbl.color = e.target.value; saveState(); renderTimeline(); renderLegend();
+    });
+
+    const nameEl = document.createElement('input');
+    nameEl.type = 'text'; nameEl.value = lbl.name; nameEl.maxLength = 30;
+    nameEl.className = 'label-name-input';
+    nameEl.addEventListener('change', e => {
+      const nv = e.target.value.trim();
+      if (!nv) { e.target.value = lbl.name; return; }
+      if (state.labels.some((l, j) => j !== i && l.name === nv)) {
+        toast('That name already exists'); e.target.value = lbl.name; return;
+      }
+      const old = lbl.name; lbl.name = nv;
+      state.segments.forEach(s => { if (s.labelName === old) s.labelName = nv; });
+      saveState(); renderTimeline(); renderLegend();
+      if (selectedSegId) openEditor();
+    });
+
+    const typeEl = document.createElement('select');
+    typeEl.className = 'label-type-select';
+    ['work', 'non-work'].forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t; if (t === lbl.type) o.selected = true;
+      typeEl.appendChild(o);
+    });
+    typeEl.addEventListener('change', e => { lbl.type = e.target.value; saveState(); renderStats(); });
+
+    const del = document.createElement('button');
+    del.className = 'label-del-btn'; del.textContent = '✕'; del.title = 'Delete label';
+    del.addEventListener('click', () => {
+      if (!confirm(`Delete "${lbl.name}"? Segments using it become Unallocated.`)) return;
+      const name = lbl.name;
+      state.labels.splice(i, 1);
+      state.segments.forEach(s => { if (s.labelName === name) s.labelName = null; });
+      saveState(); renderLabelsList(); renderTimeline(); renderLegend(); renderStats();
+      if (selectedSegId) openEditor();
+    });
+
+    row.append(swatch, nameEl, typeEl, del);
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('add-label-btn').addEventListener('click', () => {
+  const color = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+  state.labels.push({ name: 'New Label', type: 'work', color });
+  saveState(); renderLabelsList(); renderLegend();
+  const rows = document.querySelectorAll('.label-row');
+  if (rows.length) rows[rows.length - 1].querySelector('input[type="text"]')?.select();
+});
+
+document.getElementById('labels-done-btn').addEventListener('click', () => {
+  document.getElementById('labels-modal').classList.add('hidden');
+});
+
+$labelsBtn.addEventListener('click', openLabelsModal);
+
+/* ── Export helpers ─────────────────────────────────────────────────── */
+function download(content, name, mime) {
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([content], { type: mime })),
+    download: name,
+  });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function dateStamp(ms) { return new Date(ms).toLocaleDateString('en-CA').replace(/-/g, ''); }
+
+function buildCSV(rows) { return rows.map(r => r.map(escapeCSV).join(',')).join('\n'); }
+
+/* ── Export JSON (briefcase) ────────────────────────────────────────── */
+function exportJSON() {
+  const payload = JSON.stringify({
+    _meta: { version: '3', exported: new Date().toISOString(), app: 'Shift Timeline' },
+    state: JSON.parse(JSON.stringify(state)),
+  }, null, 2);
+  download(payload, `shift-${dateStamp(state.shiftStart)}.json`, 'application/json');
+  toast('Briefcase exported');
+}
+
+/* ── Export CSV — detailed ──────────────────────────────────────────── */
+function exportCSVDetail() {
+  const now = Date.now();
+  const rows = [['#', 'Date', 'Start', 'End', 'Duration (min)', 'Label', 'Type', 'Notes']];
+  state.segments.forEach((seg, i) => {
+    const end = seg.end || Math.min(now, state.shiftEnd);
+    rows.push([
+      i + 1,
+      new Date(seg.start).toLocaleDateString('en-CA'),
+      msToTimeInput(seg.start),
+      msToTimeInput(end),
+      Math.round((end - seg.start) / 60000),
+      seg.labelName || 'Unallocated',
+      getLabelType(seg.labelName),
+      seg.note || '',
+    ]);
+  });
+  download(buildCSV(rows), `shift-detail-${dateStamp(state.shiftStart)}.csv`, 'text/csv');
+  toast('Detailed CSV exported');
+}
+
+/* ── Export CSV — summary ───────────────────────────────────────────── */
+function exportCSVSummary() {
+  const now    = Date.now();
+  const totals = {};
+  state.segments.forEach(seg => {
+    const end = seg.end || Math.min(now, state.shiftEnd);
+    const dur = Math.max(0, end - seg.start);
+    const key = seg.labelName || 'Unallocated';
+    if (!totals[key]) totals[key] = { dur: 0, count: 0, type: getLabelType(seg.labelName) };
+    totals[key].dur += dur; totals[key].count++;
+  });
+  const elapsed = Math.min(now, state.shiftEnd) - state.shiftStart;
+  const rows = [['Label', 'Type', 'Segments', 'Total (min)', 'Percentage']];
+  Object.entries(totals)
+    .sort((a, b) => b[1].dur - a[1].dur)
+    .forEach(([name, d]) => rows.push([
+      name, d.type, d.count,
+      Math.round(d.dur / 60000),
+      elapsed > 0 ? (d.dur / elapsed * 100).toFixed(1) + '%' : '0%',
+    ]));
+  const grandDur   = Object.values(totals).reduce((a, b) => a + b.dur,   0);
+  const grandCount = Object.values(totals).reduce((a, b) => a + b.count, 0);
+  rows.push(['TOTAL', '', grandCount, Math.round(grandDur / 60000),
+    elapsed > 0 ? (grandDur / elapsed * 100).toFixed(1) + '%' : '0%']);
+  download(buildCSV(rows), `shift-summary-${dateStamp(state.shiftStart)}.csv`, 'text/csv');
+  toast('Summary CSV exported');
+}
+
+/* ── Export menu wiring ─────────────────────────────────────────────── */
+$exportBtn.addEventListener('click', e => { e.stopPropagation(); $exportMenu.classList.toggle('hidden'); });
+$exportMenu.addEventListener('click', e => {
+  $exportMenu.classList.add('hidden');
+  const a = e.target.dataset.action;
+  if (a === 'export-json')        exportJSON();
+  else if (a === 'export-csv-detail')   exportCSVDetail();
+  else if (a === 'export-csv-summary')  exportCSVSummary();
+});
+
+/* ── Import from file ───────────────────────────────────────────────── */
+function importFromFile(file) {
+  if (!file || !file.name.endsWith('.json')) { toast('Please select a .json briefcase file'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      const incoming = parsed.state || parsed;
+      if (!incoming.shiftStart || !Array.isArray(incoming.segments)) { toast('Invalid briefcase file'); return; }
+      if (!confirm('Replace current session with the imported briefcase?')) return;
+      state = migrateState(incoming);
+      saveState();
+      selectedSegId = null; closeEditor(); hideBanner();
+      renderRuler(); renderTimeline(); renderStats(); renderLegend();
+      toast('Session restored from briefcase');
+    } catch { toast('Could not read file'); }
+  };
+  reader.readAsText(file);
+}
+
+$importFile.addEventListener('change', e => {
+  importFromFile(e.target.files[0]);
+  e.target.value = '';
+});
+
+/* ── Drag-and-drop import ───────────────────────────────────────────── */
+(function initDragDrop() {
+  let counter = 0;
+  document.addEventListener('dragenter', e => {
+    if ([...e.dataTransfer.items].some(i => i.kind === 'file')) { counter++; $dropOverlay.classList.remove('hidden'); }
+  });
+  document.addEventListener('dragleave', () => { if (--counter <= 0) { counter = 0; $dropOverlay.classList.add('hidden'); } });
+  document.addEventListener('dragover',  e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault(); counter = 0; $dropOverlay.classList.add('hidden');
+    importFromFile(e.dataTransfer.files[0]);
+  });
+})();
+
+/* ── Modal close helpers ────────────────────────────────────────────── */
+document.querySelectorAll('.modal-close, [data-close]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.close;
+    if (id) document.getElementById(id).classList.add('hidden');
+  });
+});
+['labels-modal', 'shift-modal', 'prompt-overlay'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
+});
+
 init();

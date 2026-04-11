@@ -14,31 +14,6 @@
 <body>
   <div id="app">
 
-    <!-- ── Header ── -->
-    <header id="header">
-      <div id="header-left">
-        <span id="shift-label">Shift</span>
-        <button id="shift-time-range" title="Click to adjust shift times"></button>
-      </div>
-      <div id="header-right">
-        <button id="time-format-btn" title="Toggle 12 / 24-hour format">12h</button>
-        <button id="theme-btn" title="Toggle dark mode">◑</button>
-        <button id="labels-btn" title="Manage labels">Labels ⚙</button>
-        <div class="btn-group">
-          <button id="export-btn" title="Export data">Export ↓</button>
-          <div id="export-menu" class="dropdown hidden">
-            <button data-action="export-json">Briefcase (.json)</button>
-            <button data-action="export-csv-detail">Detailed CSV</button>
-            <button data-action="export-csv-summary">Summary CSV</button>
-          </div>
-        </div>
-        <label id="import-label" title="Import a briefcase .json file">
-          Import ↑
-          <input id="import-file" type="file" accept=".json" />
-        </label>
-        <button id="reset-btn" title="Start a new shift">↺ Reset</button>
-      </div>
-    </header>
 
     <!-- ── Timeline ── -->
     <div id="timeline-wrapper">
@@ -103,16 +78,32 @@
         <span class="stat-label">Avg segment</span>
         <span class="stat-value" id="stat-avg">—</span>
       </div>
-      <div id="legend"></div>
+      <div id="controls">
+        <button id="shift-btn" title="Adjust shift times">Shift ⚙</button>
+        <button id="time-format-btn" title="Toggle 12 / 24-hour format">12h</button>
+        <button id="theme-btn" title="Toggle dark mode">◑</button>
+        <button id="labels-btn" title="Manage labels">Labels ⚙</button>
+        <div class="btn-group">
+          <button id="export-btn" title="Export data">Export ↓</button>
+          <div id="export-menu" class="dropdown hidden">
+            <button data-action="export-json">Briefcase (.json)</button>
+            <button data-action="export-csv-detail">Detailed CSV</button>
+            <button data-action="export-csv-summary">Summary CSV</button>
+          </div>
+        </div>
+        <label id="import-label" title="Import a briefcase .json file">
+          Import ↑
+          <input id="import-file" type="file" accept=".json" />
+        </label>
+        <button id="reset-btn" title="Start a new shift">↺ Reset</button>
+      </div>
     </div>
 
     <!-- ── Context menu ── -->
     <div id="context-menu" class="hidden">
-      <div id="cm-cut"    class="cm-item cm-primary">✂&nbsp; Cut now</div>
+      <div id="cm-cut"  class="cm-item cm-primary">✂&nbsp; Cut now</div>
       <div class="cm-sep"></div>
-      <div id="cm-edit"   class="cm-item">Edit segment…</div>
-      <div class="cm-sep"></div>
-      <div id="cm-adjust" class="cm-item">Adjust shift times…</div>
+      <div id="cm-edit" class="cm-item">Edit segment…</div>
     </div>
 
     <!-- ── Toast ── -->

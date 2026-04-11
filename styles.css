@@ -46,63 +46,23 @@ html, body {
   overflow: hidden;
 }
 
-/* ── Header ────────────────────────────────────────────────────────── */
-#header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-  height: 50px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  gap: 10px;
-  box-shadow: var(--shadow);
-  z-index: 10;
-}
-
-#header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex-shrink: 0;
-}
-
-#shift-label {
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: .3px;
-  line-height: 1;
-}
-
-#shift-time-range {
-  font-size: 11px;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  text-align: left;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
-  line-height: 1;
-}
-#shift-time-range:hover { color: var(--accent); }
-
-#header-right {
+/* ── Controls (stats bar right side) ───────────────────────────────── */
+#controls {
   display: flex;
   align-items: center;
   gap: 5px;
+  margin-left: auto;
   flex-shrink: 0;
 }
 
 /* shared small button style */
-#header-right button,
+#controls button,
 #time-format-btn,
 #theme-btn,
 #labels-btn,
 #export-btn,
-#reset-btn {
+#reset-btn,
+#shift-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -115,7 +75,7 @@ html, body {
   transition: background .12s, color .12s;
   line-height: 1.4;
 }
-#header-right button:hover { background: var(--border); color: var(--text); }
+#controls button:hover { background: var(--border); color: var(--text); }
 
 #import-label {
   display: inline-flex;
@@ -140,7 +100,7 @@ html, body {
 
 .dropdown {
   position: absolute;
-  top: calc(100% + 5px);
+  bottom: calc(100% + 5px);
   right: 0;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -531,24 +491,6 @@ html, body {
   line-height: 1.2;
 }
 
-#legend {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  margin-left: auto;
-  align-items: center;
-}
-
-.legend-item {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 9px;
-  border-radius: 10px;
-  color: #fff;
-  cursor: default;
-  user-select: none;
-  white-space: nowrap;
-}
 
 /* ── Unallocated warning banner ────────────────────────────────────── */
 #unallocated-banner {
@@ -843,8 +785,7 @@ html, body {
 
 /* ── Responsive ────────────────────────────────────────────────────── */
 @media (max-width: 680px) {
-  #header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 6px; }
-  #header-right { flex-wrap: wrap; }
   #stats-panel { gap: 0; }
   .stat-item { min-width: 60px; }
+  #controls { flex-wrap: wrap; }
 }

@@ -150,7 +150,7 @@ function initShift(preserveMeta) {
 function isExpired() { return Date.now() > state.shiftEnd + 3600_000; }
 
 /* ── DOM ────────────────────────────────────────────────────────────── */
-const $shiftRange   = document.getElementById('shift-time-range');
+const $shiftBtn     = document.getElementById('shift-btn');
 const $ruler        = document.getElementById('time-ruler');
 const $track        = document.getElementById('timeline-track');
 const $segs         = document.getElementById('segments-container');
@@ -242,6 +242,7 @@ function deselect() {
 function openEditor() {
   const seg = state.segments.find(s => s.id === selectedSegId);
   if (!seg) return;
+  getTooltip().classList.remove('visible');
   const now = Date.now();
   const end = seg.end || Math.min(now, state.shiftEnd);
   $edTime.textContent = `${formatTime(seg.start)} – ${seg.end ? formatTime(seg.end) : 'now'} · ${formatDuration(end - seg.start)}`;
@@ -319,6 +320,7 @@ function renderStats() {
 
 /* ── Legend ─────────────────────────────────────────────────────────── */
 function renderLegend() {
+  if (!$legend) return;
   $legend.innerHTML = '';
   state.labels.forEach(l => {
     const el = document.createElement('span');
@@ -355,7 +357,7 @@ function renderTimeline() {
 
   $playhead.style.left = phPct + '%';
   $future.style.left   = phPct + '%';
-  $shiftRange.textContent = `${formatTime(state.shiftStart)} – ${formatTime(state.shiftEnd)}`;
+  document.title = `${formatTime(state.shiftStart)}–${formatTime(state.shiftEnd)}`;
 
   $segs.innerHTML = '';
 
@@ -387,7 +389,7 @@ function renderTimeline() {
     });
     el.addEventListener('mousemove', moveTooltip);
     el.addEventListener('mouseleave', () => getTooltip().classList.remove('visible'));
-    el.addEventListener('click', e => { e.stopPropagation(); seg.id === selectedSegId ? deselect() : selectSeg(seg.id); });
+    el.addEventListener('click', e => { e.stopPropagation(); getTooltip().classList.remove('visible'); seg.id === selectedSegId ? deselect() : selectSeg(seg.id); });
     el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(e, seg.id); });
 
     $segs.appendChild(el);
@@ -490,10 +492,9 @@ function showCtxMenu(e, segId) {
   document.getElementById('cm-edit').classList.toggle('disabled', !has);
 
   $ctxMenu.classList.remove('hidden');
-  const mw = 200, mh = 250;
+  const mw = 200;
   let x = e.clientX, y = e.clientY;
-  if (x + mw > innerWidth)  x = innerWidth  - mw - 8;
-  if (y + mh > innerHeight) y = innerHeight - mh - 8;
+  if (x + mw > innerWidth) x = innerWidth - mw - 8;
   $ctxMenu.style.left = x + 'px';
   $ctxMenu.style.top  = y + 'px';
 }
@@ -611,9 +612,8 @@ $ctxMenu.addEventListener('click', e => {
   if (!item || item.classList.contains('disabled')) return;
   hideCtxMenu();
   switch (item.id) {
-    case 'cm-cut':    cut(); break;
-    case 'cm-edit':   if (contextTargetSegId) selectSeg(contextTargetSegId); break;
-    case 'cm-adjust': openShiftModal(); break;
+    case 'cm-cut':  cut(); break;
+    case 'cm-edit': if (contextTargetSegId) selectSeg(contextTargetSegId); break;
   }
 });
 
@@ -692,7 +692,7 @@ document.getElementById('shift-apply-btn').addEventListener('click', () => {
   toast('Shift times updated');
 });
 
-$shiftRange.addEventListener('click', openShiftModal);
+$shiftBtn.addEventListener('click', openShiftModal);
 
 /* ── Labels manager ─────────────────────────────────────────────────── */
 function openLabelsModal() {

@@ -23,7 +23,6 @@
         <div id="playhead"></div>
         <div id="future-overlay"></div>
       </div>
-      <div id="timeline-hint">Right-click on timeline to cut &nbsp;·&nbsp; C / Space shortcut</div>
 
       <!-- ── Segment editor (overlays timeline in-place) ── -->
       <div id="editor-panel" class="hidden">
@@ -58,14 +57,49 @@
       <div class="panel-body">
         <div class="form-row">
           <label>Start</label>
-          <input type="time" id="shift-start-input" />
+          <div class="time-picker" data-target="shift-start-input">
+            <div class="tp-col" data-unit="hours">
+              <button class="tp-btn" data-unit="hours" data-delta="1" aria-label="Hours up">▲</button>
+              <div class="tp-val tp-hours">00</div>
+              <button class="tp-btn" data-unit="hours" data-delta="-1" aria-label="Hours down">▼</button>
+            </div>
+            <div class="tp-sep">:</div>
+            <div class="tp-col" data-unit="minutes">
+              <button class="tp-btn" data-unit="minutes" data-delta="5" aria-label="Minutes up">▲</button>
+              <div class="tp-val tp-minutes">00</div>
+              <button class="tp-btn" data-unit="minutes" data-delta="-5" aria-label="Minutes down">▼</button>
+            </div>
+          </div>
+          <input type="hidden" id="shift-start-input" />
         </div>
         <div class="form-row" style="margin-bottom:0">
           <label>End</label>
-          <input type="time" id="shift-end-input" />
+          <div class="time-picker" data-target="shift-end-input">
+            <div class="tp-col" data-unit="hours">
+              <button class="tp-btn" data-unit="hours" data-delta="1" aria-label="Hours up">▲</button>
+              <div class="tp-val tp-hours">00</div>
+              <button class="tp-btn" data-unit="hours" data-delta="-1" aria-label="Hours down">▼</button>
+            </div>
+            <div class="tp-sep">:</div>
+            <div class="tp-col" data-unit="minutes">
+              <button class="tp-btn" data-unit="minutes" data-delta="5" aria-label="Minutes up">▲</button>
+              <div class="tp-val tp-minutes">00</div>
+              <button class="tp-btn" data-unit="minutes" data-delta="-5" aria-label="Minutes down">▼</button>
+            </div>
+          </div>
+          <input type="hidden" id="shift-end-input" />
         </div>
         <div id="shift-warning"></div>
       </div>
+    </div>
+
+    <!-- ── Shifts list panel (inline, swaps for timeline) ── -->
+    <div id="shifts-panel" class="hidden">
+      <div class="panel-header">
+        <span>Saved shifts</span>
+        <button id="shifts-done-btn">Done</button>
+      </div>
+      <div class="panel-body" id="shifts-list"></div>
     </div>
 
     <!-- ── Labels panel (inline, swaps for timeline) ── -->
@@ -125,6 +159,16 @@
           Import ↑
           <input id="import-file" type="file" accept=".json" />
         </label>
+        <button id="dock-btn" title="Dock to bottom of screen (PWA only)">⬇ Dock</button>
+        <div class="btn-group">
+          <button id="cloud-btn" title="Sign in / sync">☁</button>
+          <div id="cloud-menu" class="dropdown hidden">
+            <button data-action="cloud-save">↑ Save this shift</button>
+            <button data-action="cloud-load">↓ Load a shift…</button>
+            <div class="cm-sep"></div>
+            <button data-action="cloud-signout">Sign out</button>
+          </div>
+        </div>
         <button id="reset-btn" title="Start a new shift">↺ Reset</button>
       </div>
     </div>

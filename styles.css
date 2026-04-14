@@ -129,7 +129,7 @@ html, body {
 /* ── Timeline wrapper ──────────────────────────────────────────────── */
 #timeline-wrapper {
   flex-shrink: 0;
-  padding: 10px 14px 4px;
+  padding: 6px 14px 4px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: relative;
@@ -138,8 +138,8 @@ html, body {
 
 #time-ruler {
   position: relative;
-  height: 20px;
-  margin-bottom: 4px;
+  height: 14px;
+  margin-bottom: 2px;
   user-select: none;
 }
 
@@ -153,7 +153,10 @@ html, body {
   font-size: 10px;
   color: var(--text-muted);
   pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
 }
+#timeline-wrapper:hover .ruler-tick { opacity: 1; }
 .ruler-tick::after {
   content: '';
   display: block;
@@ -167,7 +170,7 @@ html, body {
 
 #timeline-track {
   position: relative;
-  height: 54px;
+  height: 32px;
   background: var(--track-bg);
   border-radius: var(--radius);
   overflow: visible;
@@ -218,8 +221,7 @@ html, body {
   transition: opacity .12s;
 }
 .segment:hover .segment-label,
-.segment.selected .segment-label,
-.segment.wide .segment-label { opacity: 1; }
+.segment.selected .segment-label { opacity: 1; }
 
 /* segment resize handle */
 .seg-handle {
@@ -273,29 +275,37 @@ html, body {
 #future-overlay {
   position: absolute;
   top: 0; bottom: 0; right: 0;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   z-index: 3;
   border-radius: 0 var(--radius) var(--radius) 0;
   background-image: repeating-linear-gradient(
     -45deg, transparent, transparent 6px,
     rgba(0,0,0,0.028) 6px, rgba(0,0,0,0.028) 12px
   );
+  transition: background-color .12s;
 }
+#future-overlay:hover {
+  background-color: rgba(245,158,11,0.08);
+}
+#future-overlay::before {
+  content: '✂';
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: var(--playhead);
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+}
+#future-overlay:hover::before { opacity: 0.9; }
 [data-theme="dark"] #future-overlay {
   background-image: repeating-linear-gradient(
     -45deg, transparent, transparent 6px,
     rgba(255,255,255,0.02) 6px, rgba(255,255,255,0.02) 12px
   );
-}
-
-/* ── Timeline hint ─────────────────────────────────────────────────── */
-#timeline-hint {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-align: right;
-  padding: 3px 2px 2px;
-  letter-spacing: .15px;
-  opacity: .7;
 }
 
 /* ── Tooltip ───────────────────────────────────────────────────────── */
@@ -494,6 +504,34 @@ html, body {
 
 #labels-panel .panel-body { max-height: 150px; }
 
+#shifts-panel .panel-body { max-height: 200px; }
+.shift-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.shift-row:last-child { border-bottom: none; }
+.shift-row .shift-date { font-weight: 600; min-width: 90px; }
+.shift-row .shift-time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.shift-row .shift-meta { color: var(--text-muted); margin-left: auto; }
+.shift-row button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.shift-row button:hover { background: var(--border); color: var(--text); }
+
+/* Hide stats/controls when the window loses focus — user finds live numbers distracting. */
+body.window-blurred #stats-panel { display: none; }
+
 /* ── Stats panel ───────────────────────────────────────────────────── */
 #stats-panel {
   display: flex;
@@ -631,7 +669,26 @@ html, body {
   font-size: 12px;
   box-shadow: var(--shadow-lg);
   animation: toast-in .18s ease, toast-out .3s ease 2.5s forwards;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
 }
+.toast:has(.toast-undo) {
+  animation: toast-in .18s ease, toast-out .3s ease 5.5s forwards;
+}
+.toast-undo {
+  background: transparent;
+  border: 1px solid var(--bg);
+  color: var(--bg);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: .85;
+}
+.toast-undo:hover { opacity: 1; }
 @keyframes toast-in  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes toast-out { from { opacity:1; } to { opacity:0; } }
 
@@ -811,6 +868,15 @@ html, body {
   gap: 10px;
   margin-bottom: 10px;
 }
+#shift-panel .panel-body {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+#shift-panel .form-row { margin-bottom: 0; }
+#shift-warning { flex-basis: 100%; }
 .form-row label {
   font-size: 12px;
   font-weight: 600;
@@ -820,17 +886,52 @@ html, body {
   width: 50px;
   flex-shrink: 0;
 }
-.form-row input[type="time"] {
+.time-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: var(--bg);
   border: 1px solid var(--border);
-  color: var(--text);
   border-radius: var(--radius);
-  padding: 7px 10px;
-  font-size: 14px;
-  flex: 1;
-  font-family: inherit;
+  padding: 4px 8px;
+  user-select: none;
 }
-.form-row input[type="time"]:focus { border-color: var(--accent); outline: none; }
+.tp-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.tp-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  width: 34px;
+  height: 22px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.tp-btn:hover  { background: var(--border); color: var(--text); }
+.tp-btn:active { background: var(--accent); color: #fff; border-color: transparent; }
+.tp-val {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  min-width: 34px;
+  text-align: center;
+  line-height: 1.1;
+}
+.tp-sep {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
 
 #shift-warning {
   font-size: 11px;

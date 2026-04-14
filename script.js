@@ -589,6 +589,7 @@ function init() {
   document.getElementById('dock-btn').addEventListener('click', dockWindow);
   if (isStandalonePWA()) setTimeout(dockWindow, 120);
 
+  wireCloud();
 }
 
 /* ── Cloud sync (sign-in, save/load to server) ──────────────────────── */

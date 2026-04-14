@@ -6,6 +6,7 @@ const STORAGE_KEY_V2   = 'shift-timeline-v2';
 const MIN_SEGMENT_MS   = 60_000;          // 1 min minimum
 const TICK_MS          = 1000;
 const WARN_THRESHOLD   = 30 * 60 * 1000; // 30 min unallocated
+const FUTURE_BUFFER_MS = 30 * 60 * 1000; // visible future strip beyond playhead
 
 const DEFAULT_LABELS = [
   { name: 'Work',         type: 'work',     color: '#3b82f6' },
@@ -21,7 +22,7 @@ let state = {
   shiftEnd:   0,
   segments:   [],   // { id, start, end|null, labelName, note }
   labels:     [],   // { name, type, color }
-  settings:   { use24h: false },
+  settings:   { use24h: true },
 };
 
 let selectedSegId      = null;
@@ -100,10 +101,19 @@ function shiftDurationMs() {
   return state.shiftEnd - state.shiftStart;
 }
 
+// Dynamic viewport: show [shiftStart, shiftStart + elapsed + buffer], clamped to full shift.
+// Keeps the present and past proportionally large at the start of the shift.
+function viewDurationMs() {
+  const total = shiftDurationMs();
+  if (total <= 0) return 0;
+  const elapsed = Math.max(0, Math.min(Date.now() - state.shiftStart, total));
+  return Math.min(total, elapsed + FUTURE_BUFFER_MS);
+}
+
 /* ── Persistence & migration ────────────────────────────────────────── */
 function migrateState(p) {
   if (!p.labels)   p.labels   = [...DEFAULT_LABELS];
-  if (!p.settings) p.settings = { use24h: false };
+  if (!p.settings) p.settings = { use24h: true };
   if (p.segments) {
     p.segments.forEach(seg => {
       if ('label' in seg && !('labelName' in seg)) { seg.labelName = seg.label || null; delete seg.label; }
@@ -142,7 +152,7 @@ function initShift(preserveMeta) {
     shiftEnd:   snapped + 8 * 3600 * 1000,
     segments:   [{ id: uid(), start: snapped, end: null, labelName: null, note: '' }],
     labels:     prev ? prev.labels   : [...DEFAULT_LABELS],
-    settings:   prev ? prev.settings : { use24h: false },
+    settings:   prev ? prev.settings : { use24h: true },
   };
   saveState();
 }
@@ -191,6 +201,20 @@ function toast(msg) {
   el.textContent = msg;
   $toasts.appendChild(el);
   setTimeout(() => el.remove(), 3000);
+}
+
+function toastWithUndo(msg, onUndo) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  const btn = document.createElement('button');
+  btn.className = 'toast-undo';
+  btn.textContent = 'Undo';
+  btn.addEventListener('click', () => { onUndo(); el.remove(); });
+  el.append(span, btn);
+  $toasts.appendChild(el);
+  setTimeout(() => el.remove(), 6000);
 }
 
 /* ── Tooltip ────────────────────────────────────────────────────────── */
@@ -336,7 +360,8 @@ function renderLegend() {
 function renderRuler() {
   $ruler.innerHTML = '';
   if (!$track.offsetWidth) return;
-  const total = shiftDurationMs();
+  const total = viewDurationMs();
+  if (total <= 0) return;
   const step  = 30 * 60 * 1000;
   for (let t = 0; t <= total; t += step) {
     const el = document.createElement('div');
@@ -349,11 +374,12 @@ function renderRuler() {
 
 function renderTimeline() {
   const now   = Date.now();
-  const total = shiftDurationMs();
+  const total = viewDurationMs();
   if (!$track.offsetWidth || total <= 0) return;
 
-  const elapsed = Math.max(0, Math.min(now - state.shiftStart, total));
-  const phPct   = elapsed / total * 100;
+  const shiftTotal = shiftDurationMs();
+  const elapsed    = Math.max(0, Math.min(now - state.shiftStart, shiftTotal));
+  const phPct      = elapsed / total * 100;
 
   $playhead.style.left = phPct + '%';
   $future.style.left   = phPct + '%';
@@ -410,11 +436,11 @@ function renderTimeline() {
 function startDrag(e, leftId, rightId) {
   e.preventDefault(); e.stopPropagation();
   const rect = $track.getBoundingClientRect();
-  const total = shiftDurationMs();
   document.body.style.cursor = 'col-resize';
   document.body.style.userSelect = 'none';
 
   function onMove(ev) {
+    const total = viewDurationMs();
     const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
     const boundary = state.shiftStart + pct * total;
     const left  = state.segments.find(s => s.id === leftId);
@@ -504,6 +530,7 @@ function hideCtxMenu() { $ctxMenu.classList.add('hidden'); contextTargetSegId = 
 /* ── Tick ───────────────────────────────────────────────────────────── */
 function tick() {
   const now = Date.now();
+  renderRuler();
   renderTimeline();
   renderStats();
   if (now - lastWarnCheck > 30_000) { lastWarnCheck = now; checkWarn(); }
@@ -518,6 +545,7 @@ function tick() {
 /* ── Init (part 1) ──────────────────────────────────────────────────── */
 function init() {
   initTheme();
+  auth.handleCallback();
   if (!loadState() || isExpired()) initShift(false);
   $fmtBtn.textContent = state.settings.use24h ? '24h' : '12h';
   renderRuler();
@@ -534,6 +562,7 @@ function init() {
   $mergePrev.addEventListener('click', mergeWithPrev);
   $mergeNext.addEventListener('click', mergeWithNext);
   $track.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(e, null); });
+  $future.addEventListener('click', e => { e.stopPropagation(); cut(); });
 
   document.addEventListener('contextmenu', e => {
     if (!$ctxMenu.contains(e.target)) hideCtxMenu();
@@ -547,11 +576,149 @@ function init() {
 
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-    if (e.key === 'c' || e.key === 'C' || e.key === ' ') { e.preventDefault(); cut(); }
     if (e.key === 'Escape') { deselect(); hideCtxMenu(); }
   });
 
   setInterval(tick, TICK_MS);
+
+  const setBlur = b => document.body.classList.toggle('window-blurred', b);
+  window.addEventListener('blur',  () => setBlur(true));
+  window.addEventListener('focus', () => setBlur(false));
+  setBlur(!document.hasFocus());
+
+  document.getElementById('dock-btn').addEventListener('click', dockWindow);
+  if (isStandalonePWA()) setTimeout(dockWindow, 120);
+
+}
+
+/* ── Cloud sync (sign-in, save/load to server) ──────────────────────── */
+function wireCloud() {
+  const $btn   = document.getElementById('cloud-btn');
+  const $menu  = document.getElementById('cloud-menu');
+  const $panel = document.getElementById('shifts-panel');
+  const $list  = document.getElementById('shifts-list');
+
+  function refreshBtn() {
+    $btn.textContent = auth.isAuthenticated() ? '☁ ✓' : '☁';
+    $btn.title       = auth.isAuthenticated() ? 'Cloud sync' : 'Sign in to sync';
+  }
+  refreshBtn();
+
+  $btn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!auth.isAuthenticated()) { auth.login(); return; }
+    $menu.classList.toggle('hidden');
+  });
+
+  document.addEventListener('click', e => {
+    if (!$menu.contains(e.target) && e.target !== $btn) $menu.classList.add('hidden');
+  });
+
+  $menu.addEventListener('click', async e => {
+    const a = e.target.dataset.action;
+    if (!a) return;
+    $menu.classList.add('hidden');
+    if (a === 'cloud-save')    await saveToServer();
+    if (a === 'cloud-load')    await openShiftsPanel();
+    if (a === 'cloud-signout') { auth.logout(); refreshBtn(); toast('Signed out'); }
+  });
+
+  document.getElementById('shifts-done-btn').addEventListener('click', () => {
+    $panel.classList.add('hidden');
+    document.getElementById('timeline-wrapper').classList.remove('hidden');
+  });
+
+  async function saveToServer() {
+    const payload = {
+      _meta: { version: '3', exported: new Date().toISOString(), app: 'Shift Timeline' },
+      state: JSON.parse(JSON.stringify(state)),
+    };
+    try {
+      await auth.apiCall('save', { method: 'POST', body: JSON.stringify(payload) });
+      toast('Saved to server');
+    } catch (e) {
+      toast('Save failed: ' + e.message);
+    }
+  }
+
+  async function openShiftsPanel() {
+    hideForPanel();
+    $list.innerHTML = '<div style="padding:10px;color:var(--text-muted)">Loading…</div>';
+    $panel.classList.remove('hidden');
+    let shifts;
+    try {
+      const data = await auth.apiCall('list');
+      shifts = data.shifts || [];
+    } catch (e) {
+      $list.innerHTML = `<div style="padding:10px;color:var(--text-muted)">Load failed: ${e.message}</div>`;
+      return;
+    }
+    if (!shifts.length) {
+      $list.innerHTML = '<div style="padding:10px;color:var(--text-muted)">No saved shifts yet.</div>';
+      return;
+    }
+    $list.innerHTML = '';
+    shifts.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'shift-row';
+      const date = new Date(s.shift_start);
+      const dur  = Math.round((s.shift_end - s.shift_start) / 60000);
+      row.innerHTML = `
+        <span class="shift-date">${date.toLocaleDateString('en-CA')}</span>
+        <span class="shift-time">${msToTimeInput(s.shift_start)}–${msToTimeInput(s.shift_end)}</span>
+        <span class="shift-meta">${dur} min · ${s.segments} seg</span>`;
+      const loadBtn = document.createElement('button');
+      loadBtn.textContent = 'Load';
+      loadBtn.addEventListener('click', () => loadShift(s.shift_start));
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '✕';
+      delBtn.title = 'Delete from server';
+      delBtn.addEventListener('click', async () => {
+        if (!confirm('Delete this shift from the server?')) return;
+        try { await auth.apiCall('delete', { query: { shift_start: s.shift_start } }); row.remove(); }
+        catch (e) { toast('Delete failed: ' + e.message); }
+      });
+      row.append(loadBtn, delBtn);
+      $list.appendChild(row);
+    });
+  }
+
+  async function loadShift(shiftStart) {
+    try {
+      const data = await auth.apiCall('fetch', { query: { shift_start: shiftStart } });
+      const incoming = data.state || data;
+      if (!incoming.shiftStart || !Array.isArray(incoming.segments)) { toast('Invalid payload'); return; }
+      if (!confirm('Replace current session with this saved shift?')) return;
+      state = migrateState(incoming);
+      saveState();
+      selectedSegId = null; closeEditor(); hideBanner();
+      $panel.classList.add('hidden');
+      document.getElementById('timeline-wrapper').classList.remove('hidden');
+      renderRuler(); renderTimeline(); renderStats(); renderLegend();
+      toast('Shift loaded from server');
+    } catch (e) {
+      toast('Load failed: ' + e.message);
+    }
+  }
+}
+
+/* ── Auto-dock (PWA only) ───────────────────────────────────────────── */
+function isStandalonePWA() {
+  return window.matchMedia('(display-mode: standalone)').matches
+      || window.matchMedia('(display-mode: minimal-ui)').matches
+      || window.navigator.standalone === true;
+}
+function dockWindow() {
+  const wrap = document.getElementById('timeline-wrapper');
+  const stats = document.getElementById('stats-panel');
+  const content = (wrap?.offsetHeight || 60) + (stats?.offsetHeight || 40);
+  const chrome  = Math.max(0, window.outerHeight - window.innerHeight);
+  const h = Math.min(screen.availHeight, content + chrome + 4);
+  const w = screen.availWidth;
+  try {
+    window.moveTo(0, screen.availHeight - h);
+    window.resizeTo(w, h);
+  } catch { /* regular tabs silently ignore */ }
 }
 
 /* ── Split & Merge (needed by editor buttons above) ─────────────────── */
@@ -587,6 +754,8 @@ function mergeWithNext() {
 function mergePair(li, ri) {
   const L = state.segments[li], R = state.segments[ri];
   if (!L || !R) return;
+  const snapshot = JSON.parse(JSON.stringify(state.segments));
+  const prevSelected = selectedSegId;
   const now = Date.now();
   const lDur = (L.end || now) - L.start;
   const rDur = (R.end || now) - R.start;
@@ -600,7 +769,12 @@ function mergePair(li, ri) {
   state.segments.splice(li, 2, merged);
   selectedSegId = merged.id;
   saveState(); renderTimeline(); renderStats(); openEditor();
-  toast('Segments merged');
+  toastWithUndo('Segments merged', () => {
+    state.segments = snapshot;
+    selectedSegId = prevSelected;
+    saveState(); renderTimeline(); renderStats();
+    if (selectedSegId) openEditor(); else closeEditor();
+  });
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -611,11 +785,12 @@ function mergePair(li, ri) {
 $ctxMenu.addEventListener('click', e => {
   const item = e.target.closest('.cm-item');
   if (!item || item.classList.contains('disabled')) return;
+  const target = contextTargetSegId;
   hideCtxMenu();
   switch (item.id) {
     case 'cm-cut':        cut(); break;
-    case 'cm-merge-prev': if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithPrev(); } break;
-    case 'cm-merge-next': if (contextTargetSegId) { selectedSegId = contextTargetSegId; mergeWithNext(); } break;
+    case 'cm-merge-prev': if (target) { selectedSegId = target; mergeWithPrev(); } break;
+    case 'cm-merge-next': if (target) { selectedSegId = target; mergeWithNext(); } break;
   }
 });
 
@@ -660,11 +835,57 @@ function hideForPanel() {
   document.getElementById('timeline-wrapper').classList.add('hidden');
 }
 
+/* ── Custom 24h time picker ─────────────────────────────────────────── */
+function initTimePicker(rootEl) {
+  const hidden = document.getElementById(rootEl.dataset.target);
+  const $h = rootEl.querySelector('.tp-hours');
+  const $m = rootEl.querySelector('.tp-minutes');
+
+  function sync() {
+    const [h, m] = (hidden.value || '00:00').split(':').map(n => parseInt(n, 10) || 0);
+    $h.textContent = String(h).padStart(2, '0');
+    $m.textContent = String(m).padStart(2, '0');
+  }
+  function step(unit, delta) {
+    let h = parseInt($h.textContent, 10);
+    let m = parseInt($m.textContent, 10);
+    if (unit === 'hours') {
+      h = (h + delta + 24) % 24;
+    } else {
+      const total = h * 60 + m + delta;
+      const norm  = ((total % 1440) + 1440) % 1440;
+      h = Math.floor(norm / 60);
+      m = norm % 60;
+    }
+    hidden.value = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    sync();
+  }
+  rootEl.addEventListener('click', e => {
+    const btn = e.target.closest('.tp-btn');
+    if (!btn) return;
+    step(btn.dataset.unit, Number(btn.dataset.delta));
+  });
+  rootEl.querySelectorAll('.tp-col').forEach(col => {
+    col.addEventListener('wheel', e => {
+      e.preventDefault();
+      const base = col.dataset.unit === 'minutes' ? 5 : 1;
+      step(col.dataset.unit, e.deltaY > 0 ? -base : base);
+    }, { passive: false });
+  });
+  hidden._tpSync = sync;
+  sync();
+}
+document.querySelectorAll('.time-picker').forEach(initTimePicker);
+
 /* ── Shift time adjustment ──────────────────────────────────────────── */
 function openShiftModal() {
   hideForPanel();
-  document.getElementById('shift-start-input').value = msToTimeInput(state.shiftStart);
-  document.getElementById('shift-end-input').value   = msToTimeInput(state.shiftEnd);
+  const start = document.getElementById('shift-start-input');
+  const end   = document.getElementById('shift-end-input');
+  start.value = msToTimeInput(state.shiftStart);
+  end.value   = msToTimeInput(state.shiftEnd);
+  start._tpSync && start._tpSync();
+  end._tpSync   && end._tpSync();
   document.getElementById('shift-warning').textContent = '';
   document.getElementById('shift-panel').classList.remove('hidden');
 }

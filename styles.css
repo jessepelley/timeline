@@ -504,7 +504,7 @@ html, body {
 
 #labels-panel .panel-body { max-height: 150px; }
 
-#shifts-panel .panel-body { max-height: 200px; }
+#shifts-panel .panel-body { max-height: 200px; padding: 4px 14px; }
 .shift-row {
   display: flex;
   align-items: center;

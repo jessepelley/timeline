@@ -624,10 +624,10 @@ function wireCloud() {
     if (a === 'cloud-signout') { auth.logout(); refreshBtn(); toast('Signed out'); }
   });
 
-  document.getElementById('shifts-done-btn').addEventListener('click', () => {
+  function closeShiftsPanel() {
     $panel.classList.add('hidden');
     document.getElementById('timeline-wrapper').classList.remove('hidden');
-  });
+  }
 
   async function saveToServer() {
     const payload = {
@@ -642,23 +642,39 @@ function wireCloud() {
     }
   }
 
+  function backLink() {
+    const a = document.createElement('a');
+    a.href = '#'; a.textContent = '← Back';
+    a.style.cssText = 'font-size:11px;color:var(--text-muted);display:inline-block;padding:4px 0;';
+    a.addEventListener('click', e => { e.preventDefault(); closeShiftsPanel(); });
+    const wrap = document.createElement('div');
+    wrap.style.padding = '2px 0';
+    wrap.appendChild(a);
+    return wrap;
+  }
+
   async function openShiftsPanel() {
     hideForPanel();
-    $list.innerHTML = '<div style="padding:10px;color:var(--text-muted)">Loading…</div>';
+    $list.innerHTML = '<div style="padding:6px 0;color:var(--text-muted);font-size:11px">Loading…</div>';
     $panel.classList.remove('hidden');
     let shifts;
     try {
       const data = await auth.apiCall('list');
       shifts = data.shifts || [];
     } catch (e) {
-      $list.innerHTML = `<div style="padding:10px;color:var(--text-muted)">Load failed: ${e.message}</div>`;
+      $list.innerHTML = '';
+      $list.append(backLink());
+      $list.insertAdjacentHTML('beforeend', `<div style="padding:4px 0;color:var(--text-muted);font-size:11px">Load failed: ${e.message}</div>`);
       return;
     }
     if (!shifts.length) {
-      $list.innerHTML = '<div style="padding:10px;color:var(--text-muted)">No saved shifts yet.</div>';
+      $list.innerHTML = '';
+      $list.append(backLink());
+      $list.insertAdjacentHTML('beforeend', '<div style="padding:4px 0;color:var(--text-muted);font-size:11px">No saved shifts yet.</div>');
       return;
     }
     $list.innerHTML = '';
+    $list.append(backLink());
     shifts.forEach(s => {
       const row = document.createElement('div');
       row.className = 'shift-row';

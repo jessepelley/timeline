@@ -181,9 +181,7 @@ const $fmtBtn       = document.getElementById('time-format-btn');
 const $labelsBtn    = document.getElementById('labels-btn');
 const $exportBtn    = document.getElementById('export-btn');
 const $exportMenu   = document.getElementById('export-menu');
-const $importFile   = document.getElementById('import-file');
 const $ctxMenu      = document.getElementById('context-menu');
-const $dropOverlay  = document.getElementById('drop-overlay');
 const $toasts       = document.getElementById('toast-container');
 const $legend       = document.getElementById('legend');
 const $statWork     = document.getElementById('stat-work');
@@ -596,9 +594,18 @@ function wireCloud() {
   const $panel = document.getElementById('shifts-panel');
   const $list  = document.getElementById('shifts-list');
 
-  function refreshBtn() {
-    $btn.textContent = auth.isAuthenticated() ? '☁ ✓' : '☁';
-    $btn.title       = auth.isAuthenticated() ? 'Cloud sync' : 'Sign in to sync';
+  const $user = document.getElementById('cloud-user');
+
+  async function refreshBtn() {
+    const authed = auth.isAuthenticated();
+    $btn.textContent = authed ? '☁ ✓' : '☁';
+    $btn.title       = authed ? 'Cloud sync' : 'Sign in to sync';
+    if (authed) {
+      const info = await auth.whoami();
+      $user.textContent = info?.email || info?.user || '';
+    } else {
+      $user.textContent = '';
+    }
   }
   refreshBtn();
 
@@ -1014,16 +1021,6 @@ function dateStamp(ms) { return new Date(ms).toLocaleDateString('en-CA').replace
 
 function buildCSV(rows) { return rows.map(r => r.map(escapeCSV).join(',')).join('\n'); }
 
-/* ── Export JSON (briefcase) ────────────────────────────────────────── */
-function exportJSON() {
-  const payload = JSON.stringify({
-    _meta: { version: '3', exported: new Date().toISOString(), app: 'Shift Timeline' },
-    state: JSON.parse(JSON.stringify(state)),
-  }, null, 2);
-  download(payload, `shift-${dateStamp(state.shiftStart)}.json`, 'application/json');
-  toast('Briefcase exported');
-}
-
 /* ── Export CSV — detailed ──────────────────────────────────────────── */
 function exportCSVDetail() {
   const now = Date.now();
@@ -1078,49 +1075,9 @@ $exportBtn.addEventListener('click', e => { e.stopPropagation(); $exportMenu.cla
 $exportMenu.addEventListener('click', e => {
   $exportMenu.classList.add('hidden');
   const a = e.target.dataset.action;
-  if (a === 'export-json')        exportJSON();
-  else if (a === 'export-csv-detail')   exportCSVDetail();
-  else if (a === 'export-csv-summary')  exportCSVSummary();
+  if (a === 'export-csv-detail')       exportCSVDetail();
+  else if (a === 'export-csv-summary') exportCSVSummary();
 });
-
-/* ── Import from file ───────────────────────────────────────────────── */
-function importFromFile(file) {
-  if (!file || !file.name.endsWith('.json')) { toast('Please select a .json briefcase file'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const parsed = JSON.parse(e.target.result);
-      const incoming = parsed.state || parsed;
-      if (!incoming.shiftStart || !Array.isArray(incoming.segments)) { toast('Invalid briefcase file'); return; }
-      if (!confirm('Replace current session with the imported briefcase?')) return;
-      state = migrateState(incoming);
-      saveState();
-      selectedSegId = null; closeEditor(); hideBanner();
-      renderRuler(); renderTimeline(); renderStats(); renderLegend();
-      toast('Session restored from briefcase');
-    } catch { toast('Could not read file'); }
-  };
-  reader.readAsText(file);
-}
-
-$importFile.addEventListener('change', e => {
-  importFromFile(e.target.files[0]);
-  e.target.value = '';
-});
-
-/* ── Drag-and-drop import ───────────────────────────────────────────── */
-(function initDragDrop() {
-  let counter = 0;
-  document.addEventListener('dragenter', e => {
-    if ([...e.dataTransfer.items].some(i => i.kind === 'file')) { counter++; $dropOverlay.classList.remove('hidden'); }
-  });
-  document.addEventListener('dragleave', () => { if (--counter <= 0) { counter = 0; $dropOverlay.classList.add('hidden'); } });
-  document.addEventListener('dragover',  e => e.preventDefault());
-  document.addEventListener('drop', e => {
-    e.preventDefault(); counter = 0; $dropOverlay.classList.add('hidden');
-    importFromFile(e.dataTransfer.files[0]);
-  });
-})();
 
 /* ── Modal close helpers (prompt only) ─────────────────────────────── */
 const $promptOverlay = document.getElementById('prompt-overlay');

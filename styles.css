@@ -77,24 +77,6 @@ html, body {
 }
 #controls button:hover { background: var(--border); color: var(--text); }
 
-#import-label {
-  display: inline-flex;
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: var(--radius);
-  padding: 4px 9px;
-  cursor: pointer;
-  font-size: 12px;
-  white-space: nowrap;
-  transition: background .12s, color .12s;
-  line-height: 1.4;
-  user-select: none;
-}
-#import-label:hover { background: var(--border); color: var(--text); }
-#import-file { display: none; }
-
 /* export dropdown group */
 .btn-group { position: relative; }
 
@@ -328,29 +310,23 @@ html, body {
 }
 .seg-tooltip.visible { opacity: 1; }
 
-/* ── Editor panel (overlays timeline in-place) ─────────────────────── */
+/* ── Editor panel (below timeline) ────────────────────────────────── */
 #editor-panel {
-  position: absolute;
-  inset: 0;
   background: var(--surface);
-  z-index: 10;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  transition: opacity .15s;
-  opacity: 1;
 }
 #editor-panel.hidden {
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
+  display: none;
 }
 
 #editor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 14px 5px;
-  border-bottom: 1px solid var(--border);
+  padding: 6px 14px 4px;
   gap: 8px;
 }
 
@@ -529,8 +505,9 @@ html, body {
 }
 .shift-row button:hover { background: var(--border); color: var(--text); }
 
-/* Hide stats/controls when the window loses focus — keep just the timeline visible. */
+/* Hide stats/controls/editor when the window loses focus — keep just the timeline visible. */
 body.window-blurred #stats-panel { display: none; }
+body.window-blurred #editor-panel { display: none; }
 body.window-blurred #timeline-wrapper {
   border-bottom: none;
   padding-bottom: 6px;
@@ -653,6 +630,14 @@ body.window-blurred #app { background: var(--surface); }
 .cm-item.cm-primary { font-weight: 700; color: #ef4444; }
 .cm-item.disabled { opacity: .35; pointer-events: none; }
 .cm-sep { height: 1px; background: var(--border); margin: 3px 0; }
+.cm-user {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ── Toast ─────────────────────────────────────────────────────────── */
 #toast-container {
@@ -696,33 +681,6 @@ body.window-blurred #app { background: var(--surface); }
 .toast-undo:hover { opacity: 1; }
 @keyframes toast-in  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes toast-out { from { opacity:1; } to { opacity:0; } }
-
-/* ── Drop overlay ──────────────────────────────────────────────────── */
-#drop-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 250;
-}
-#drop-overlay.hidden { display: none; }
-
-#drop-box {
-  border: 3px dashed rgba(255,255,255,.55);
-  border-radius: 16px;
-  padding: 48px 72px;
-  text-align: center;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 500;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  pointer-events: none;
-}
-.drop-icon { font-size: 52px; line-height: 1; }
 
 /* ── Modals ────────────────────────────────────────────────────────── */
 .modal-overlay {

@@ -24,26 +24,27 @@
         <div id="future-overlay"></div>
       </div>
 
-      <!-- ── Segment editor (overlays timeline in-place) ── -->
-      <div id="editor-panel" class="hidden">
-        <div id="editor-header">
-          <span id="editor-seg-time"></span>
-          <div id="editor-actions">
-            <button id="merge-prev-btn" disabled>⟵ Merge prev</button>
-            <button id="merge-next-btn" disabled>Merge next ⟶</button>
-            <button id="editor-close">✕</button>
-          </div>
+    </div>
+
+    <!-- ── Segment editor (below timeline) ── -->
+    <div id="editor-panel" class="hidden">
+      <div id="editor-header">
+        <span id="editor-seg-time"></span>
+        <div id="editor-actions">
+          <button id="merge-prev-btn" disabled>⟵ Merge prev</button>
+          <button id="merge-next-btn" disabled>Merge next ⟶</button>
+          <button id="editor-close">✕</button>
         </div>
-        <div id="editor-body">
-          <div id="category-chips"></div>
-          <div id="split-buttons">
-            <button id="split-halves-btn">½</button>
-            <button id="split-n-btn">÷N</button>
-          </div>
+      </div>
+      <div id="editor-body">
+        <div id="category-chips"></div>
+        <div id="split-buttons">
+          <button id="split-halves-btn">½</button>
+          <button id="split-n-btn">÷N</button>
         </div>
-        <div id="notes-section">
-          <input type="text" id="notes-input" placeholder="Note…" />
-        </div>
+      </div>
+      <div id="notes-section">
+        <input type="text" id="notes-input" placeholder="Note…" />
       </div>
     </div>
 
@@ -144,20 +145,17 @@
         <button id="theme-btn" title="Toggle dark mode">◑</button>
         <button id="labels-btn" title="Manage labels">Labels ⚙</button>
         <div class="btn-group">
-          <button id="export-btn" title="Export data">Export ↓</button>
+          <button id="export-btn" title="Export CSV">Export ↓</button>
           <div id="export-menu" class="dropdown hidden">
-            <button data-action="export-json">Briefcase (.json)</button>
             <button data-action="export-csv-detail">Detailed CSV</button>
             <button data-action="export-csv-summary">Summary CSV</button>
           </div>
         </div>
-        <label id="import-label" title="Import a briefcase .json file">
-          Import ↑
-          <input id="import-file" type="file" accept=".json" />
-        </label>
         <div class="btn-group">
           <button id="cloud-btn" title="Sign in / sync">☁</button>
           <div id="cloud-menu" class="dropdown hidden">
+            <div id="cloud-user" class="cm-user"></div>
+            <div class="cm-sep"></div>
             <button data-action="cloud-save">↑ Save this shift</button>
             <button data-action="cloud-load">↓ Load a shift…</button>
             <div class="cm-sep"></div>
@@ -180,14 +178,6 @@
 
     <!-- ── Toast ── -->
     <div id="toast-container"></div>
-
-    <!-- ── Drag-and-drop overlay ── -->
-    <div id="drop-overlay" class="hidden">
-      <div id="drop-box">
-        <div class="drop-icon">📁</div>
-        <div>Drop briefcase file to import</div>
-      </div>
-    </div>
 
   </div><!-- #app -->
 

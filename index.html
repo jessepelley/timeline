@@ -139,6 +139,7 @@
         <button id="time-format-btn" title="Toggle 12 / 24-hour format">12h</button>
         <button id="theme-btn" title="Toggle dark mode">◑</button>
         <button id="labels-btn" title="Manage labels">Labels ⚙</button>
+        <button id="history-btn" title="View past sessions">History</button>
         <div class="btn-group">
           <button id="export-btn" title="Export CSV">Export ↓</button>
           <div id="export-menu" class="dropdown hidden">
@@ -172,6 +173,19 @@
     <div id="toast-container"></div>
 
   </div><!-- #app -->
+
+  <!-- ── History modal ── -->
+  <div id="history-overlay" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:680px">
+      <div class="modal-header">
+        <h2>History</h2>
+        <button class="modal-close" id="history-close">✕</button>
+      </div>
+      <div class="modal-body" id="history-body">
+        <div id="history-loading" style="text-align:center;padding:24px;color:var(--text-muted)">Loading…</div>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Number prompt modal ── -->
   <div id="prompt-overlay" class="modal-overlay hidden">

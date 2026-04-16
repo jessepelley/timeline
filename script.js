@@ -1041,6 +1041,142 @@ $exportMenu.addEventListener('click', e => {
   else if (a === 'export-csv-summary') exportCSVSummary();
 });
 
+/* ── History ────────────────────────────────────────────────────────── */
+(function wireHistory() {
+  const $btn     = document.getElementById('history-btn');
+  const $overlay = document.getElementById('history-overlay');
+  const $close   = document.getElementById('history-close');
+  const $body    = document.getElementById('history-body');
+
+  function fmtDur(ms) {
+    if (ms <= 0) return '0m';
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+
+  function fmtHours(ms) {
+    return (ms / 3600000).toFixed(1) + 'h';
+  }
+
+  function close() { $overlay.classList.add('hidden'); }
+
+  $close.addEventListener('click', close);
+  $overlay.addEventListener('click', e => { if (e.target === $overlay) close(); });
+
+  $btn.addEventListener('click', async () => {
+    if (!auth.isAuthenticated()) { toast('Sign in to view history'); return; }
+    $body.innerHTML = '<div class="history-empty">Loading…</div>';
+    $overlay.classList.remove('hidden');
+
+    try {
+      const data = await auth.apiCall('history');
+      render(data);
+    } catch (e) {
+      $body.innerHTML = `<div class="history-empty">Failed to load history: ${e.message}</div>`;
+    }
+  });
+
+  function render({ shifts, aggregate: agg }) {
+    $body.innerHTML = '';
+    if (!shifts || !shifts.length) {
+      $body.innerHTML = '<div class="history-empty">No saved sessions yet.</div>';
+      return;
+    }
+
+    // ── Aggregate stats ──
+    const aggEl = document.createElement('div');
+    aggEl.className = 'history-agg';
+    const avgWork = agg.shiftCount > 0 ? agg.totalWork / agg.shiftCount : 0;
+    const avgSegs = agg.shiftCount > 0 ? Math.round(agg.totalSegments / agg.shiftCount) : 0;
+    const totalAll = agg.totalWork + agg.totalNonwork + agg.totalUnalloc;
+    const workPct = totalAll > 0 ? Math.round(agg.totalWork / totalAll * 100) : 0;
+    [
+      ['Sessions', agg.shiftCount],
+      ['Total work', fmtHours(agg.totalWork)],
+      ['Avg work/day', fmtDur(avgWork)],
+      ['Work %', workPct + '%'],
+      ['Avg segments', avgSegs],
+      ['Total tracked', fmtHours(totalAll)],
+    ].forEach(([label, value]) => {
+      const item = document.createElement('div');
+      item.className = 'history-agg-item';
+      item.innerHTML = `<span class="history-agg-label">${label}</span><span class="history-agg-value">${value}</span>`;
+      aggEl.appendChild(item);
+    });
+    $body.appendChild(aggEl);
+
+    // ── Aggregate label breakdown bar ──
+    const labelTotals = agg.labelTotals || {};
+    const labelEntries = Object.entries(labelTotals).sort((a, b) => b[1].ms - a[1].ms);
+    if (labelEntries.length && totalAll > 0) {
+      const bar = document.createElement('div');
+      bar.className = 'history-label-bar';
+      labelEntries.forEach(([name, d]) => {
+        const seg = document.createElement('div');
+        seg.className = 'history-label-bar-seg';
+        seg.style.width = (d.ms / totalAll * 100) + '%';
+        seg.style.background = d.color;
+        seg.title = `${name}: ${fmtDur(d.ms)} (${(d.ms / totalAll * 100).toFixed(1)}%)`;
+        bar.appendChild(seg);
+      });
+      $body.appendChild(bar);
+
+      const legend = document.createElement('div');
+      legend.className = 'history-label-legend';
+      labelEntries.forEach(([name, d]) => {
+        const item = document.createElement('div');
+        item.className = 'history-label-legend-item';
+        item.innerHTML = `<span class="history-label-legend-dot" style="background:${d.color}"></span>${name} ${fmtDur(d.ms)}`;
+        legend.appendChild(item);
+      });
+      $body.appendChild(legend);
+    }
+
+    // ── Per-shift rows ──
+    shifts.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'history-shift';
+
+      const total = s.shift_end - s.shift_start;
+      const date = new Date(s.shift_start);
+      const dateStr = date.toLocaleDateString('en-CA');
+      const startTime = msToTimeInput(s.shift_start);
+      const endTime = msToTimeInput(s.shift_end);
+
+      const dateEl = document.createElement('div');
+      dateEl.className = 'history-shift-date';
+      dateEl.textContent = dateStr;
+
+      const timeEl = document.createElement('div');
+      timeEl.className = 'history-shift-time';
+      timeEl.textContent = `${startTime}–${endTime}`;
+
+      const bar = document.createElement('div');
+      bar.className = 'history-shift-bar';
+      if (s.breakdown && total > 0) {
+        Object.entries(s.breakdown)
+          .sort((a, b) => b[1].ms - a[1].ms)
+          .forEach(([name, d]) => {
+            const seg = document.createElement('div');
+            seg.className = 'history-shift-bar-seg';
+            seg.style.width = (d.ms / total * 100) + '%';
+            seg.style.background = d.color;
+            seg.title = `${name}: ${fmtDur(d.ms)}`;
+            bar.appendChild(seg);
+          });
+      }
+
+      const stats = document.createElement('div');
+      stats.className = 'history-shift-stats';
+      stats.textContent = fmtDur(s.work);
+
+      row.append(dateEl, timeEl, bar, stats);
+      $body.appendChild(row);
+    });
+  }
+})();
+
 /* ── Modal close helpers (prompt only) ─────────────────────────────── */
 const $promptOverlay = document.getElementById('prompt-overlay');
 $promptOverlay.addEventListener('click', e => { if (e.target === $promptOverlay) $promptOverlay.classList.add('hidden'); });

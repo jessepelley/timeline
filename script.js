@@ -129,7 +129,9 @@ function migrateState(p) {
 }
 
 function saveState() {
+  state._lastModified = Date.now();
   localStorage.setItem(STORAGE_KEY_V3, JSON.stringify(state));
+  scheduleCloudSync();
 }
 
 function loadState() {
@@ -587,22 +589,75 @@ function init() {
   wireCloud();
 }
 
-/* ── Cloud sync (sign-in, save/load to server) ──────────────────────── */
-function wireCloud() {
-  const $btn   = document.getElementById('cloud-btn');
-  const $menu  = document.getElementById('cloud-menu');
-  const $panel = document.getElementById('shifts-panel');
-  const $list  = document.getElementById('shifts-list');
+/* ── Cloud sync (auto-save / auto-load) ──────────────────────────────── */
+let cloudSyncTimer = null;
+let lastCloudSave  = 0;         // timestamp of last successful push
+const SYNC_DEBOUNCE = 10_000;   // 10s after last local change
 
+function scheduleCloudSync() {
+  if (!auth.isAuthenticated()) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE);
+}
+
+async function pushToCloud() {
+  if (!auth.isAuthenticated()) return;
+  const payload = {
+    _meta: { version: '3', exported: new Date().toISOString(), app: 'Shift Timeline' },
+    state: JSON.parse(JSON.stringify(state)),
+  };
+  try {
+    await auth.apiCall('save', { method: 'POST', body: JSON.stringify(payload) });
+    lastCloudSave = Date.now();
+  } catch { /* silent — next debounce will retry */ }
+}
+
+// On startup (or sign-in), check if server has a newer copy of today's session
+async function pullFromCloud() {
+  if (!auth.isAuthenticated()) return;
+  try {
+    const data = await auth.apiCall('list');
+    const shifts = data.shifts || [];
+    // find a server shift with the same shiftStart as local
+    const match = shifts.find(s => s.shift_start === state.shiftStart);
+    if (!match) { pushToCloud(); return; }  // no server copy yet — push ours
+    // server has this shift — check if it's newer
+    const localModified = state._lastModified || 0;
+    if (match.updated_at > localModified) {
+      // server is newer — fetch and apply
+      const full = await auth.apiCall('fetch', { query: { shift_start: match.shift_start } });
+      const incoming = full.state || full;
+      if (incoming.shiftStart && Array.isArray(incoming.segments)) {
+        state = migrateState(incoming);
+        saveStateLocal();   // save without triggering another cloud sync
+        selectedSegId = null; closeEditor(); hideBanner();
+        renderRuler(); renderTimeline(); renderStats(); renderLegend();
+      }
+    } else {
+      // local is newer or same — push to server
+      pushToCloud();
+    }
+  } catch { /* silent on startup */ }
+}
+
+// Save to localStorage only (no cloud trigger) — used when pulling from cloud
+function saveStateLocal() {
+  state._lastModified = Date.now();
+  localStorage.setItem(STORAGE_KEY_V3, JSON.stringify(state));
+}
+
+function wireCloud() {
+  const $btn  = document.getElementById('cloud-btn');
+  const $menu = document.getElementById('cloud-menu');
   const $user = document.getElementById('cloud-user');
 
   async function refreshBtn() {
     const authed = auth.isAuthenticated();
     $btn.textContent = authed ? '☁ ✓' : '☁';
-    $btn.title       = authed ? 'Cloud sync' : 'Sign in to sync';
+    $btn.title       = authed ? 'Cloud sync active' : 'Sign in to sync';
     if (authed) {
       const info = await auth.whoami();
-      $user.textContent = info?.email || info?.user || '';
+      $user.textContent = info?.name || info?.given_name || '';
     } else {
       $user.textContent = '';
     }
@@ -619,108 +674,15 @@ function wireCloud() {
     if (!$menu.contains(e.target) && e.target !== $btn) $menu.classList.add('hidden');
   });
 
-  $menu.addEventListener('click', async e => {
+  $menu.addEventListener('click', e => {
     const a = e.target.dataset.action;
     if (!a) return;
     $menu.classList.add('hidden');
-    if (a === 'cloud-save')    await saveToServer();
-    if (a === 'cloud-load')    await openShiftsPanel();
     if (a === 'cloud-signout') { auth.logout(); refreshBtn(); toast('Signed out'); }
   });
 
-  function closeShiftsPanel() {
-    $panel.classList.add('hidden');
-    document.getElementById('timeline-wrapper').classList.remove('hidden');
-  }
-
-  async function saveToServer() {
-    const payload = {
-      _meta: { version: '3', exported: new Date().toISOString(), app: 'Shift Timeline' },
-      state: JSON.parse(JSON.stringify(state)),
-    };
-    try {
-      await auth.apiCall('save', { method: 'POST', body: JSON.stringify(payload) });
-      toast('Saved to server');
-    } catch (e) {
-      toast('Save failed: ' + e.message);
-    }
-  }
-
-  function backLink() {
-    const a = document.createElement('a');
-    a.href = '#'; a.textContent = '← Back';
-    a.style.cssText = 'font-size:11px;color:var(--text-muted);display:inline-block;padding:4px 0;';
-    a.addEventListener('click', e => { e.preventDefault(); closeShiftsPanel(); });
-    const wrap = document.createElement('div');
-    wrap.style.padding = '2px 0';
-    wrap.appendChild(a);
-    return wrap;
-  }
-
-  async function openShiftsPanel() {
-    hideForPanel();
-    $list.innerHTML = '<div style="padding:6px 0;color:var(--text-muted);font-size:11px">Loading…</div>';
-    $panel.classList.remove('hidden');
-    let shifts;
-    try {
-      const data = await auth.apiCall('list');
-      shifts = data.shifts || [];
-    } catch (e) {
-      $list.innerHTML = '';
-      $list.append(backLink());
-      $list.insertAdjacentHTML('beforeend', `<div style="padding:4px 0;color:var(--text-muted);font-size:11px">Load failed: ${e.message}</div>`);
-      return;
-    }
-    if (!shifts.length) {
-      $list.innerHTML = '';
-      $list.append(backLink());
-      $list.insertAdjacentHTML('beforeend', '<div style="padding:4px 0;color:var(--text-muted);font-size:11px">No saved shifts yet.</div>');
-      return;
-    }
-    $list.innerHTML = '';
-    $list.append(backLink());
-    shifts.forEach(s => {
-      const row = document.createElement('div');
-      row.className = 'shift-row';
-      const date = new Date(s.shift_start);
-      const dur  = Math.round((s.shift_end - s.shift_start) / 60000);
-      row.innerHTML = `
-        <span class="shift-date">${date.toLocaleDateString('en-CA')}</span>
-        <span class="shift-time">${msToTimeInput(s.shift_start)}–${msToTimeInput(s.shift_end)}</span>
-        <span class="shift-meta">${dur} min · ${s.segments} seg</span>`;
-      const loadBtn = document.createElement('button');
-      loadBtn.textContent = 'Load';
-      loadBtn.addEventListener('click', () => loadShift(s.shift_start));
-      const delBtn = document.createElement('button');
-      delBtn.textContent = '✕';
-      delBtn.title = 'Delete from server';
-      delBtn.addEventListener('click', async () => {
-        if (!confirm('Delete this shift from the server?')) return;
-        try { await auth.apiCall('delete', { query: { shift_start: s.shift_start } }); row.remove(); }
-        catch (e) { toast('Delete failed: ' + e.message); }
-      });
-      row.append(loadBtn, delBtn);
-      $list.appendChild(row);
-    });
-  }
-
-  async function loadShift(shiftStart) {
-    try {
-      const data = await auth.apiCall('fetch', { query: { shift_start: shiftStart } });
-      const incoming = data.state || data;
-      if (!incoming.shiftStart || !Array.isArray(incoming.segments)) { toast('Invalid payload'); return; }
-      if (!confirm('Replace current session with this saved shift?')) return;
-      state = migrateState(incoming);
-      saveState();
-      selectedSegId = null; closeEditor(); hideBanner();
-      $panel.classList.add('hidden');
-      document.getElementById('timeline-wrapper').classList.remove('hidden');
-      renderRuler(); renderTimeline(); renderStats(); renderLegend();
-      toast('Shift loaded from server');
-    } catch (e) {
-      toast('Load failed: ' + e.message);
-    }
-  }
+  // Auto-load from cloud on startup
+  if (auth.isAuthenticated()) pullFromCloud();
 }
 
 

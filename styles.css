@@ -480,31 +480,6 @@ html, body {
 
 #labels-panel .panel-body { max-height: 150px; }
 
-#shifts-panel .panel-body { max-height: 200px; padding: 4px 14px; }
-.shift-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 2px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-}
-.shift-row:last-child { border-bottom: none; }
-.shift-row .shift-date { font-weight: 600; min-width: 90px; }
-.shift-row .shift-time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.shift-row .shift-meta { color: var(--text-muted); margin-left: auto; }
-.shift-row button {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-}
-.shift-row button:hover { background: var(--border); color: var(--text); }
-
 /* Hide stats/controls/editor when the window loses focus — keep just the timeline visible. */
 body.window-blurred #stats-panel { display: none; }
 body.window-blurred #editor-panel { display: none; }

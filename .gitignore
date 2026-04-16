@@ -1,1 +1,4 @@
 .DS_Store
+server/api.php
+a/index.php
+auth/index.php

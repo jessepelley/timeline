@@ -529,8 +529,13 @@ html, body {
 }
 .shift-row button:hover { background: var(--border); color: var(--text); }
 
-/* Hide stats/controls when the window loses focus — user finds live numbers distracting. */
+/* Hide stats/controls when the window loses focus — keep just the timeline visible. */
 body.window-blurred #stats-panel { display: none; }
+body.window-blurred #timeline-wrapper {
+  border-bottom: none;
+  padding-bottom: 6px;
+}
+body.window-blurred #app { background: var(--surface); }
 
 /* ── Stats panel ───────────────────────────────────────────────────── */
 #stats-panel {

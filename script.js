@@ -586,9 +586,6 @@ function init() {
   window.addEventListener('focus', () => setBlur(false));
   setBlur(!document.hasFocus());
 
-  document.getElementById('dock-btn').addEventListener('click', dockWindow);
-  if (isStandalonePWA()) setTimeout(dockWindow, 120);
-
   wireCloud();
 }
 
@@ -719,24 +716,6 @@ function wireCloud() {
   }
 }
 
-/* ── Auto-dock (PWA only) ───────────────────────────────────────────── */
-function isStandalonePWA() {
-  return window.matchMedia('(display-mode: standalone)').matches
-      || window.matchMedia('(display-mode: minimal-ui)').matches
-      || window.navigator.standalone === true;
-}
-function dockWindow() {
-  const wrap = document.getElementById('timeline-wrapper');
-  const stats = document.getElementById('stats-panel');
-  const content = (wrap?.offsetHeight || 60) + (stats?.offsetHeight || 40);
-  const chrome  = Math.max(0, window.outerHeight - window.innerHeight);
-  const h = Math.min(screen.availHeight, content + chrome + 4);
-  const w = screen.availWidth;
-  try {
-    window.moveTo(0, screen.availHeight - h);
-    window.resizeTo(w, h);
-  } catch { /* regular tabs silently ignore */ }
-}
 
 /* ── Split & Merge (needed by editor buttons above) ─────────────────── */
 function splitInto(id, n) {
